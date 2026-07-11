@@ -15,7 +15,6 @@ jobs:
 
       - name: Executar Avaliacao Oficial no Servidor
         run: |
-          # Pega o arquivo JSON alterado ou adicionado no PR
           CHANGED_FILE=$(git diff --name-only origin/main HEAD | grep 'submissoes/.*\.json$' | head -n 1)
 
           if [ -z "$CHANGED_FILE" ]; then
