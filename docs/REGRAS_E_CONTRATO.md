@@ -27,12 +27,13 @@ As queries executadas pelo juiz estão em [`juiz/sql/gates/`](../juiz/sql/gates/
 
 A tabela deve existir e estar populada ao final da execução do container.
 
-### Uso opcional do MinIO
+### Uso opcional de object storage S3-compatível
 
-Você pode usar MinIO/S3 livremente para staging ou formatos intermediários (Parquet, Delta Lake, Iceberg), desde que:
+Você pode usar storage S3-compatível (na avaliação: MinIO dockerizado como alvo de laboratório) livremente para staging ou formatos intermediários (Parquet, Delta Lake, Iceberg), desde que:
 
 * Use apenas o prefixo `s3://marketing-leads/{participante}/`
 * A tabela final em Postgres permaneça a **fonte de verdade** para validação e BI
+* Projete o código contra a **API S3 genérica** — não acople à marca MinIO; em produção, escolha o backend S3 que fizer sentido para o seu contexto (ver [licença e alternativas](./STACK_E_LIMITES.md#-object-storage-s3-compatível-opcional))
 
 ---
 

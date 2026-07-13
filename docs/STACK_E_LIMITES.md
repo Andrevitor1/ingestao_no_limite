@@ -12,7 +12,7 @@ Esta competição simula um cenário real: a infraestrutura é fornecida, mas **
 2. O GitHub Action dispara `avaliador.sh` no servidor (**Hardware Celeron**).
 3. O avaliador clona o **seu repositório** (campo `repositorio` do JSON).
 4. Faz `docker build` da **sua imagem** e executa com limites de 2 CPU / 2 GB RAM.
-5. Seu container entra na **mesma rede Docker** do Postgres e do MinIO.
+5. Seu container entra na **mesma rede Docker** do Postgres e do object storage S3 (MinIO no laboratório).
 6. Os dados brutos ficam montados em **`/data/`** (somente leitura).
 7. Ao terminar, o **juiz** valida a tabela `public.{participante}_empresas` e grava o ranking.
 
@@ -33,14 +33,14 @@ O avaliador define estas variáveis no `docker run`. **Seu código deve lê-las*
 | `PG_USER` | Usuário Postgres | `homelab_postgres` |
 | `PG_PASSWORD` | Senha Postgres | *(injetada pelo servidor)* |
 | `PG_DB` | Banco de destino | `db_empresas` |
-| `S3_ENDPOINT` | Endpoint MinIO | `http://minio:9000` |
-| `AWS_ACCESS_KEY_ID` | Credencial MinIO | `admin` |
-| `AWS_SECRET_ACCESS_KEY` | Credencial MinIO | `minio_password` |
+| `S3_ENDPOINT` | Endpoint S3-compatível (MinIO na avaliação) | `http://minio:9000` |
+| `AWS_ACCESS_KEY_ID` | Credencial S3 | `admin` |
+| `AWS_SECRET_ACCESS_KEY` | Credencial S3 | `minio_password` |
 | `MINIO_BUCKET` | Bucket S3 | `marketing-leads` |
 
 ### Regra de ouro
 
-> Dentro do container na avaliação, use **`postgres_db`** e **`minio`** como hosts — **não** use `localhost` para Postgres ou MinIO.  
+> Dentro do container na avaliação, use **`postgres_db`** e **`minio`** como hosts — **não** use `localhost` para Postgres ou S3.  
 > `localhost` dentro do container aponta para o próprio container, não para o servidor.
 
 ### Tabela e path de saída
@@ -48,7 +48,7 @@ O avaliador define estas variáveis no `docker run`. **Seu código deve lê-las*
 | Item | Como obter no código |
 | :--- | :--- |
 | Tabela Postgres | `public.{PG_TABLE}` ou `public.{PARTICIPANTE}_empresas` |
-| Prefixo MinIO (opcional) | `s3://{MINIO_BUCKET}/{PARTICIPANTE}/` |
+| Prefixo S3 (opcional) | `s3://{MINIO_BUCKET}/{PARTICIPANTE}/` |
 
 ---
 
@@ -67,7 +67,9 @@ O banco `db_ingestao` / tabela `ranking_ingestao` é **interno da competição**
 
 ---
 
-## 📦 MinIO / S3 (opcional)
+## 📦 Object storage S3-compatível (opcional)
+
+O desafio expõe um backend **compatível com a API S3**. Na avaliação oficial, essa implementação é o **MinIO dockerizado** — apenas como **alvo de laboratório/benchmark**, não como sugestão de stack de produção.
 
 | Item | Na avaliação (dentro do container) | No seu PC (dev local) |
 | :--- | :--- | :--- |
@@ -76,7 +78,40 @@ O banco `db_ingestao` / tabela `ranking_ingestao` é **interno da competição**
 | Prefixo | `{participante}/` | idem |
 | Credenciais | via `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | `admin` / `minio_password` |
 
-MinIO é opcional. Se usar, limite-se ao seu prefixo — conta para o ranking de storage.
+Object storage S3 é **opcional**. Se usar, limite-se ao seu prefixo — conta para o ranking de storage.
+
+### Abstraia o backend S3 no seu código
+
+Projete o pipeline para falar via **API S3 genérica** (boto3, aws-sdk, etc.), lendo `S3_ENDPOINT` e credenciais de variáveis de ambiente. Assim, o MinIO do desafio é só uma implementação de referência; em produção você troca o endpoint sem reescrever a lógica de ingestão.
+
+### Licença e uso permitido do MinIO
+
+O MinIO mudou de modelo nos últimos anos. Pontos relevantes para este desafio:
+
+| Tema | O que importa aqui |
+| :--- | :--- |
+| **GNU AGPLv3** | Servidor e gateway MinIO são AGPLv3 desde 2021. Usar MinIO **sem modificações** como serviço interno de CI/laboratório **não força** AGPL no seu código de ingestão — apenas programas que derivam ou redistribuem o MinIO modificado. |
+| **MinIO Software License** | Binários recentes restringem uso sem contrato enterprise a **uma instância, ambiente não produtivo, avaliação interna**. O padrão deste repositório (MinIO efêmero no runner, prefixo por participante, sem oferta pública multi-tenant) enquadra-se nesse uso de laboratório. |
+| **Edição Community** | A distribuição upstream prioriza código-fonte; funcionalidades avançadas de administração migraram para CLI (`mc admin`) ou edição paga (AIStor). Para o desafio isso é aceitável; para produção, avalie risco operacional. |
+
+**Não** trate o MinIO deste desafio como plataforma de object storage oficial para terceiros. Documente no seu repositório que, em produção, cada time escolhe sua solução S3-compatível e avalia juridicamente o uso.
+
+Links oficiais: [repositório MinIO](https://github.com/minio/minio) · [licença AGPLv3](https://github.com/minio/minio/blob/master/LICENSE) · [MinIO Software License](https://docs.min.io/license/)
+
+### Alternativas S3-compatíveis (produção e replicação do desafio)
+
+Se você for replicar o desafio ou levar o pipeline a produção, considere backends que falam a mesma API S3:
+
+| Opção | Observação |
+| :--- | :--- |
+| **AWS S3** (ou equivalentes em nuvem) | Padrão de mercado; sem MinIO no caminho |
+| **Ceph RADOS Gateway** | Object storage open source com API S3 |
+| **SeaweedFS** | Leve, S3-compatível, bom para ambientes enxutos |
+| **MinIO local (docker-compose)** | Válido para **dev/benchmark individual**; fixe uma **tag de release** (evite `latest`) |
+
+### Organizadores: fixar versão do MinIO
+
+Ao subir a infra do servidor de avaliação, **fixe uma tag de release** do MinIO no `docker-compose` ou `docker run` (ex.: `minio/minio:RELEASE.2024-...`), não `latest`. Mudanças de licença e de interface entre versões podem quebrar expectativas de uma edição para outra.
 
 ---
 
@@ -212,7 +247,7 @@ Para recalcular: `source scripts/lib/estimate-timeout.sh && compute_pipeline_tim
 
 | Recurso | Recomendação |
 | :--- | :--- |
-| RAM do host | **≥ 6 GB** (2 GB participante + Postgres + MinIO + SO) |
+| RAM do host | **≥ 6 GB** (2 GB participante + Postgres + S3/MinIO + SO) |
 | Avaliações simultâneas | **1** (fila única) |
 | Build vs pipeline | Tempos separados — build limitado a 15 min / 1 CPU |
 
@@ -225,9 +260,9 @@ Para recalcular: `source scripts/lib/estimate-timeout.sh && compute_pipeline_tim
 | Abordagem | Quando faz sentido |
 | :--- | :--- |
 | ZIP → Postgres direto | Simplicidade, BI plug-and-play |
-| ZIP → Parquet (MinIO) → Postgres | Grandes volumes, batches controlados |
+| ZIP → Parquet (S3) → Postgres | Grandes volumes, batches controlados |
 | ZIP → DuckDB/Polars → ambos | Uma engine, múltiplos sinks |
-| Apenas MinIO | **Não classifica** — Postgres é obrigatório |
+| Apenas object storage S3 | **Não classifica** — Postgres é obrigatório |
 
 ---
 
@@ -245,7 +280,7 @@ Configuração do servidor em `juiz/config.env`:
 
 | Variável | Função |
 | :--- | :--- |
-| `DOCKER_NETWORK` | Rede compartilhada entre container do participante, Postgres e MinIO |
+| `DOCKER_NETWORK` | Rede compartilhada entre container do participante, Postgres e S3 (MinIO) |
 | `DATA_VOLUME` | Volume montado em `/data/` (ex.: `/path/zips:/data:ro`) |
 | `PG_CONTAINER` | Nome do container Postgres (`postgres_db`) |
 

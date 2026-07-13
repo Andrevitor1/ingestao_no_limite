@@ -27,11 +27,13 @@ Antes de abrir o Pull Request para avaliação, verifique todos os pontos abaixo
 - [ ] Dados lidos de `/data/` (zips montados pelo avaliador).
 - [ ] Tabela gravada em `public.{PG_TABLE}` no banco `db_empresas`.
 
-## MinIO (opcional)
+## Object storage S3 (opcional)
 
+- [ ] O código fala **API S3 genérica** via `S3_ENDPOINT` — MinIO na avaliação é só alvo de laboratório.
 - [ ] Endpoint lido de `S3_ENDPOINT` (`http://minio:9000` na avaliação).
 - [ ] Credenciais lidas de `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`.
 - [ ] Arquivos apenas no prefixo `s3://marketing-leads/{PARTICIPANTE}/`.
+- [ ] Para produção ou fork do desafio: escolha backend S3-compatível próprio (AWS S3, Ceph, SeaweedFS, etc.) — ver [STACK_E_LIMITES.md](../../docs/STACK_E_LIMITES.md#-object-storage-s3-compatível-opcional).
 
 ## Submissão
 

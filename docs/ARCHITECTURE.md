@@ -38,7 +38,7 @@ flowchart TB
 
     subgraph Infra["Infraestrutura Docker (sempre ativa)"]
         PG["postgres_db<br/>db_empresas + db_ingestao"]
-        MinIO["minio<br/>S3 opcional"]
+        MinIO["minio<br/>S3 lab (opcional)"]
         Data["/data/*.zip<br/>somente leitura"]
     end
 
@@ -165,8 +165,10 @@ Serviços **sempre ativos** no host (não sobem por submissão):
 | Serviço | Container | Bancos / paths |
 | :--- | :--- | :--- |
 | PostgreSQL | `postgres_db` | `db_empresas` (dados), `db_ingestao` (ranking) |
-| MinIO | `minio` | bucket `marketing-leads` |
+| MinIO (S3 lab) | `minio` | bucket `marketing-leads` — alvo S3 local para benchmark; não é recomendação de produção |
 | Dados brutos | volume montado | `/data/*.zip` (read-only) |
+
+> **Licença:** o MinIO na infra de avaliação é componente interno de laboratório (AGPLv3 + [MinIO Software License](https://docs.min.io/license/) para binários). Participantes devem abstrair a API S3 no código; para produção ou replicação do desafio, use backends S3-compatíveis à escolha de cada time. Detalhes em [STACK_E_LIMITES.md](./STACK_E_LIMITES.md#-object-storage-s3-compatível-opcional).
 
 ---
 
@@ -179,7 +181,7 @@ flowchart LR
     subgraph Rede["Rede Docker (homelab_net)"]
         APP["Container participante<br/>app_submissao_test"]
         PG["postgres_db:5432"]
-        S3["minio:9000"]
+        S3["minio:9000<br/>(S3-compatível)"]
     end
 
     VOL["Host: /data/*.zip<br/>montado em /data:ro"]
@@ -209,7 +211,7 @@ sequenceDiagram
     participant JZ as validar.py
     participant DK as Docker
     participant PG as PostgreSQL
-    participant MN as MinIO
+    participant MN as S3 (MinIO lab)
 
     P->>GH: Abre PR com submissoes/user.json
     GH->>WF: Dispara Action (self-hosted)
@@ -237,7 +239,7 @@ sequenceDiagram
     AV->>AV: Mede pico RAM, limpa container/imagem
     AV->>JZ: avaliar --tempo --exit-code --peak-ram-mb
     JZ->>PG: Gate execução, volume, DQ-01..08
-    JZ->>MN: Métrica storage MinIO
+    JZ->>MN: Métrica storage S3 (prefixo participante)
     JZ->>PG: INSERT ranking_ingestao
     JZ-->>AV: CLASSIFICADO ou ERRO_*
 
@@ -435,7 +437,7 @@ graph TB
 
         subgraph Servicos["Sempre ativos"]
             PG_SVC["postgres_db"]
-            MN_SVC["minio"]
+            MN_SVC["minio<br/>(S3 lab)"]
         end
 
         subgraph Orquestrador["Leve"]
@@ -549,7 +551,7 @@ Soluções **classificadas** entram no ranking com base em:
 ```mermaid
 flowchart LR
     A["1º — Menor tempo_segundos<br/>(wall time do docker run)"]
-    B["2º — Menor storage total<br/>(Postgres + MinIO)"]
+    B["2º — Menor storage total<br/>(Postgres + S3, se usado)"]
     C["3º — Menor peak_ram_mb"]
 
     A --> B --> C

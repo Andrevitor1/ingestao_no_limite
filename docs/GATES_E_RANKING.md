@@ -97,8 +97,8 @@ Coletadas automaticamente após passar em todos os gates:
 | :--- | :--- | :--- |
 | `tempo_segundos` | Wall time do `docker run` | **Primário** — menor vence |
 | `storage_postgres_mb` | Tamanho da tabela no Postgres | Desempate 1 |
-| `storage_minio_mb` | Bytes no prefixo MinIO do participante | Desempate 1 |
-| `storage_total_mb` | Postgres + MinIO (calculado nas views) | Desempate 1 |
+| `storage_minio_mb` | Bytes no prefixo S3 do participante (MinIO na avaliação) | Desempate 1 |
+| `storage_total_mb` | Postgres + S3 (calculado nas views) | Desempate 1 |
 | `peak_ram_mb` | Pico de RAM do container | Desempate 2 |
 | `total_registros` | Linhas na tabela final | Exibição no site |
 
@@ -130,7 +130,7 @@ DDL, função de ranking e views: `juiz/sql/schema/ranking_ingestao.sql`
 | `github_user` | Identificador do participante |
 | `repositorio` | URL do repositório da solução |
 | `tempo_segundos` | Wall time do pipeline |
-| `storage_postgres_mb` / `storage_minio_mb` | Storage consumido |
+| `storage_postgres_mb` / `storage_minio_mb` | Storage Postgres / S3 (coluna `storage_minio_mb` mede o prefixo no MinIO da avaliação) |
 | `peak_ram_mb` | Pico de RAM |
 | `total_registros` | Linhas na tabela final |
 | `status` | Resultado final (ver abaixo) |
