@@ -8,8 +8,8 @@ Esta competição simula um cenário real: a infraestrutura é fornecida, mas **
 
 ## 🔄 O que acontece quando você abre o PR
 
-1. Você abre um PR no fork com `submissoes/seu_usuario.json`.
-2. O GitHub Action dispara `avaliador.sh` no servidor (**Hardware Celeron**).
+1. Você abre um PR no fork com `submissions/seu_usuario.json`.
+2. O GitHub Action dispara `evaluator/evaluator.sh` no servidor (**Hardware Celeron**).
 3. O avaliador clona o **seu repositório** (campo `repositorio` do JSON).
 4. Faz `docker build` da **sua imagem** e executa com limites de 2 CPU / 2 GB RAM.
 5. Seu container entra na **mesma rede Docker** do Postgres e do object storage S3 (MinIO no laboratório).
@@ -132,7 +132,7 @@ Seu pipeline deve ler os zips **diretamente** de `/data/`, sem depender de downl
 
 | Aspecto | Local (seu PC) | Avaliação (PR no servidor) |
 | :--- | :--- | :--- |
-| Quem roda o Docker | Você | `avaliador.sh` |
+| Quem roda o Docker | Você | `evaluator/evaluator.sh` |
 | `PG_HOST` | `localhost` | `postgres_db` |
 | `S3_ENDPOINT` | `http://localhost:9000` | `http://minio:9000` |
 | `/data/` | Você monta com `-v` | Montado automaticamente |
@@ -194,7 +194,7 @@ Substitua `homelab_net` pela rede Docker onde `postgres_db` e `minio` estão rod
 
 Se o processo estourar RAM, o container morre com **exit code 137** (OOM) e a submissão é desclassificada.
 
-O orquestrador (`avaliador.sh` + juiz) é leve: o build usa no máximo 1 CPU / 1 GB; o pipeline do participante recebe os 2 CPU / 2 GB completos.
+O orquestrador (`evaluator/evaluator.sh` + juiz) é leve: o build usa no máximo 1 CPU / 1 GB; o pipeline do participante recebe os 2 CPU / 2 GB completos.
 
 ---
 
@@ -229,7 +229,7 @@ total_linhas = DATA_LINES_FILE1 + (DATA_LINES_OTHERS_EACH × DATA_FILES_OTHERS)
 timeout = (total_linhas / PIPELINE_ROWS_PER_SEC_FLOOR) × (1 + MARGIN%)
 ```
 
-Valores padrão no servidor (`juiz/config.env`):
+Valores padrão no servidor (`evaluator/judge/config.env`):
 
 | Variável | Valor | Significado |
 | :--- | :--- | :--- |
@@ -265,7 +265,7 @@ A estimativa por bytes (`DATA_UNCOMPRESSED_MB`) é usada como validação cruzad
 | Filtros (`capital_social > 1000`, MEI/CPF) | CPU — descarta a maioria das 48M linhas |
 | Carga no Postgres (`COPY`/batch) | I/O de rede Docker + disco |
 
-Para recalcular: `source scripts/lib/estimate-timeout.sh && print_timeout_estimate`
+Para recalcular: `source evaluator/scripts/lib/estimate-timeout.sh && print_timeout_estimate`
 
 ### Servidor de avaliação (organizadores)
 
@@ -300,7 +300,7 @@ Para recalcular: `source scripts/lib/estimate-timeout.sh && print_timeout_estima
 
 ## 🛠️ Referência interna (organizadores)
 
-Configuração do servidor em `juiz/config.env`:
+Configuração do servidor em `evaluator/judge/config.env`:
 
 | Variável | Função |
 | :--- | :--- |
@@ -308,4 +308,4 @@ Configuração do servidor em `juiz/config.env`:
 | `DATA_VOLUME` | Volume montado em `/data/` (ex.: `/path/zips:/data:ro`) |
 | `PG_CONTAINER` | Nome do container Postgres (`postgres_db`) |
 
-Participantes **não** editam `juiz/config.env` — isso é só no servidor de avaliação.
+Participantes **não** editam `evaluator/judge/config.env` — isso é só no servidor de avaliação.

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Estimativa de timeout do pipeline a partir do perfil do dataset oficial.
 #
-# Uso (após carregar juiz/config.env):
+# Uso (após carregar evaluator/judge/config.env):
 #   source scripts/lib/estimate-timeout.sh
 #   compute_pipeline_timeout    # imprime segundos
 #   print_timeout_estimate      # log legível

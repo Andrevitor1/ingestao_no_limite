@@ -6,7 +6,7 @@
 #   - Este arquivo deve ficar na RAIZ do repo indicado em participante.json
 #   - Ao iniciar o container, a ingestão deve rodar automaticamente (sem comando manual)
 #
-# Estrutura esperada do SEU repo (não copie docs/ nem juiz/ do repo oficial):
+# Estrutura esperada do SEU repo (não copie docs/ nem evaluator/ do repo oficial):
 #
 #   seu-repo/
 #   ├── Dockerfile

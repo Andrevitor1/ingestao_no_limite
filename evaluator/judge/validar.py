@@ -3,9 +3,9 @@
 Juiz automático — gates, métricas e gravação no ranking.
 
 Uso:
-  python3 juiz/validar.py preflight --participante renan_python
-  python3 juiz/validar.py registrar --participante renan_python --status ERRO_CLONE_GIT
-  python3 juiz/validar.py avaliar --participante renan_python --repositorio URL \\
+  python3 evaluator/judge/validar.py preflight --participante renan_python
+  python3 evaluator/judge/validar.py registrar --participante renan_python --status ERRO_CLONE_GIT
+  python3 evaluator/judge/validar.py avaliar --participante renan_python --repositorio URL \\
       --tempo 120.5 --exit-code 0 --peak-ram-mb 512 --timed-out false
 """
 

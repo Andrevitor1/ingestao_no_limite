@@ -3,7 +3,7 @@ name: Avaliador de Submissoes
 on:
   pull_request:
     paths:
-      - 'submissoes/*.json'
+      - 'submissions/*.json'
     branches: [ main ]
 
 # Fila única: uma submissão por vez. cancel-in-progress=false enfileira em vez de cancelar.
@@ -31,7 +31,7 @@ jobs:
         id: changed-files
         uses: tj-actions/changed-files@v45
         with:
-          files: submissoes/*.json
+          files: submissions/*.json
 
       - name: Executar Avaliacao Oficial no Servidor
         run: |
@@ -50,7 +50,7 @@ jobs:
           [ -n "${GITHUB_RUN_ID:-}" ] && _LOG_SLUG="${_LOG_SLUG}_run${GITHUB_RUN_ID}"
 
           # shellcheck disable=SC1091
-          source scripts/lib/log-run.sh
+          source evaluator/scripts/lib/log-run.sh
           log_run_init workflow "$_LOG_SLUG"
           trap 'log_run_finish $?' EXIT
 
@@ -59,8 +59,8 @@ jobs:
           echo "--> PR: ${PR_NUMERO:-n/a} | Run: ${GITHUB_RUN_ID:-n/a}"
           echo "================================================="
 
-          chmod +x avaliador.sh
-          ./avaliador.sh "$CHANGED_FILE"
+          chmod +x evaluator/evaluator.sh
+          ./evaluator/evaluator.sh "$CHANGED_FILE"
 
       - name: Intervalo de cortesia (fairness)
         if: always()

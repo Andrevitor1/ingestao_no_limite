@@ -1,10 +1,10 @@
 #!/bin/bash
-# Orquestrador fino — clone, docker build/run, delega gates ao juiz/validar.py
+# Thin orchestrator — clone, docker build/run, delegates gates to judge/validar.py
 set -eo pipefail
 export LC_NUMERIC=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-JUIZ_DIR="$SCRIPT_DIR/juiz"
+JUDGE_DIR="$SCRIPT_DIR/judge"
 
 # ------------------------------------------------------------------------------
 # Logs (stdout/stderr → logs/avaliador/)
@@ -18,7 +18,7 @@ log_run_init avaliador "$_LOG_SLUG"
 trap 'log_run_finish $?' EXIT
 
 # ------------------------------------------------------------------------------
-# Configuração (juiz/config.env sobrescreve defaults)
+# Configuração (evaluator/judge/config.env sobrescreve defaults)
 # ------------------------------------------------------------------------------
 PG_CONTAINER="${PG_CONTAINER:-postgres_db}"
 DIR_TESTES="${DIR_TESTES:-/tmp/testes_ingestao}"
@@ -29,9 +29,9 @@ BUILD_TIMEOUT_SEC="${BUILD_TIMEOUT_SEC:-900}"
 BUILD_CPU_LIMIT="${BUILD_CPU_LIMIT:-1.0}"
 BUILD_MEM_LIMIT="${BUILD_MEM_LIMIT:-1g}"
 
-if [[ -f "${JUIZ_CONFIG:-$JUIZ_DIR/config.env}" ]]; then
+if [[ -f "${JUIZ_CONFIG:-$JUDGE_DIR/config.env}" ]]; then
     # shellcheck disable=SC1091
-    set -a && source "${JUIZ_CONFIG:-$JUIZ_DIR/config.env}" && set +a
+    set -a && source "${JUIZ_CONFIG:-$JUDGE_DIR/config.env}" && set +a
 fi
 
 # shellcheck disable=SC1091
@@ -49,15 +49,15 @@ log_error() { echo -e "[\033[1;31mERRO\033[0m]    $(date +'%H:%M:%S') - $*"; }
 # ------------------------------------------------------------------------------
 # Juiz Python
 # ------------------------------------------------------------------------------
-run_juiz() {
-    python3 "$JUIZ_DIR/validar.py" "$@"
+run_judge() {
+    python3 "$JUDGE_DIR/validar.py" "$@"
 }
 
 juiz_registrar() {
     local participante="$1" status="$2" repositorio="${3:-}"
     local args=(registrar --participante "$participante" --status "$status")
     [[ -n "$repositorio" ]] && args+=(--repositorio "$repositorio")
-    run_juiz "${args[@]}" || log_warn "Falha ao registrar status $status no ranking"
+    run_judge "${args[@]}" || log_warn "Falha ao registrar status $status no ranking"
 }
 
 parse_mem_mb() {
@@ -117,7 +117,7 @@ print_timeout_estimate | while IFS= read -r line; do log_info "$line"; done
 # ------------------------------------------------------------------------------
 # JSON de submissão (Gate G0 — parcial no bash)
 # ------------------------------------------------------------------------------
-[[ -n "$JSON_FILE" ]] || { log_error "Uso: ./avaliador.sh submissoes/nome.json"; exit 1; }
+[[ -n "$JSON_FILE" ]] || { log_error "Uso: ./evaluator/evaluator.sh submissions/nome.json"; exit 1; }
 [[ -f "$JSON_FILE" ]] || { log_error "Arquivo não encontrado: $JSON_FILE"; exit 1; }
 
 jq empty "$JSON_FILE" 2>/dev/null || { log_error "JSON inválido: $JSON_FILE"; exit 1; }
@@ -142,7 +142,7 @@ echo -e "=================================================\n"
 # Gate G1 — Preflight (juiz)
 # ------------------------------------------------------------------------------
 log_info "Preflight (Postgres db_empresas)..."
-if ! run_juiz preflight --participante "$PARTICIPANTE"; then
+if ! run_judge preflight --participante "$PARTICIPANTE"; then
     juiz_registrar "$PARTICIPANTE" "ERRO_PREFLIGHT_PG" "$REPO_URL"
     exit 1
 fi
@@ -269,7 +269,7 @@ JUIZ_ARGS=(
 
 log_info "Juiz automático validando gates e gravando ranking..."
 set +e
-run_juiz "${JUIZ_ARGS[@]}"
+run_judge "${JUIZ_ARGS[@]}"
 JUIZ_EXIT=$?
 set -e
 

@@ -33,11 +33,11 @@ Antes de abrir o Pull Request para avaliação, verifique todos os pontos abaixo
 - [ ] Endpoint lido de `S3_ENDPOINT` (`http://minio:9000` na avaliação).
 - [ ] Credenciais lidas de `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`.
 - [ ] Arquivos apenas no prefixo `s3://marketing-leads/{PARTICIPANTE}/`.
-- [ ] Para produção ou fork do desafio: escolha backend S3-compatível próprio (AWS S3, Ceph, SeaweedFS, etc.) — ver [STACK_E_LIMITES.md](../../docs/STACK_E_LIMITES.md#-object-storage-s3-compatível-opcional).
+- [ ] Para produção ou fork do desafio: escolha backend S3-compatível próprio (AWS S3, Ceph, SeaweedFS, etc.) — ver [STACK_E_LIMITES.md](./STACK_E_LIMITES.md#-object-storage-s3-compatível-opcional).
 
 ## Submissão
 
-- [ ] Arquivo `submissoes/seu_usuario.json` criado no fork.
+- [ ] Arquivo `submissions/seu_usuario.json` criado no fork.
 - [ ] JSON contém `participante` e `repositorio` (URL pública do seu código).
 - [ ] Repositório da solução é público e contém o `Dockerfile` na raiz.
 

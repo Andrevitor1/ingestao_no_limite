@@ -26,13 +26,13 @@ O repositório `ingestao_no_limite` é o **hub da competição**: recebe submiss
 flowchart TB
     subgraph GitHub["GitHub"]
         Fork["Fork do participante"]
-        PR["PR com submissoes/*.json"]
+        PR["PR com submissions/*.json"]
         Action["GitHub Action<br/>teste.yml"]
     end
 
     subgraph Servidor["Servidor self-hosted (Celeron)"]
-        Avaliador["avaliador.sh<br/>orquestrador bash"]
-        Juiz["juiz/validar.py<br/>juiz automático"]
+        Avaliador["evaluator/evaluator.sh<br/>orquestrador bash"]
+        Juiz["evaluator/judge/validar.py<br/>juiz automático"]
         Runner["GitHub Actions Runner"]
     end
 
@@ -69,7 +69,7 @@ flowchart TB
 
 | Princípio | Como é aplicado |
 | :--- | :--- |
-| **Orquestrador fino** | `avaliador.sh` só clona, builda, roda Docker e delega validação ao juiz |
+| **Orquestrador fino** | `evaluator/evaluator.sh` só clona, builda, roda Docker e delega validação ao juiz |
 | **Juiz com regras** | `validar.py` concentra gates SQL, métricas e INSERT no ranking |
 | **Isolamento** | Cada submissão roda em container efêmero com limites rígidos de CPU/RAM |
 | **Fila única** | Uma avaliação por vez; cooldown de 15 min entre runs |
@@ -83,29 +83,29 @@ flowchart TB
 ```mermaid
 graph LR
     subgraph Entrada
-        JSON["submissoes/*.json"]
+        JSON["submissions/*.json"]
         WF[".github/workflows/teste.yml"]
     end
 
     subgraph Orquestracao
-        AV["avaliador.sh"]
-        LOG["scripts/lib/log-run.sh"]
-        EST["scripts/lib/estimate-timeout.sh"]
+        AV["evaluator/evaluator.sh"]
+        LOG["evaluator/scripts/lib/log-run.sh"]
+        EST["evaluator/scripts/lib/estimate-timeout.sh"]
     end
 
     subgraph Juiz
-        VP["juiz/validar.py"]
-        RS["juiz/run-sql.sh"]
-        SQL["juiz/sql/<br/>(privado no servidor)"]
+        VP["evaluator/judge/validar.py"]
+        RS["evaluator/judge/run-sql.sh"]
+        SQL["evaluator/judge/sql/<br/>(privado no servidor)"]
     end
 
     subgraph Manutencao
-        SM["scripts/smoke-test.sh"]
+        SM["evaluator/scripts/smoke-test.sh"]
     end
 
     subgraph Saida
         RANK["db_ingestao.ranking_ingestao"]
-        LOGS["logs/avaliador/"]
+        LOGS["evaluator/logs/avaliador/"]
     end
 
     JSON --> WF
@@ -120,7 +120,7 @@ graph LR
     SM -.->|"validação manual"| VP
 ```
 
-### 3.1 `avaliador.sh` — orquestrador
+### 3.1 `evaluator/evaluator.sh` — orquestrador
 
 Responsabilidades:
 
@@ -137,7 +137,7 @@ Responsabilidades:
 
 **Não faz:** queries de data quality, regras de negócio ou ranking — isso é do juiz.
 
-### 3.2 `juiz/validar.py` — juiz automático
+### 3.2 `evaluator/judge/validar.py` — juiz automático
 
 Três comandos principais:
 
@@ -153,7 +153,7 @@ Dependências Python: `psycopg2-binary`, `boto3`.
 
 | Aspecto | Comportamento |
 | :--- | :--- |
-| Trigger | PR em `main` alterando `submissoes/*.json` |
+| Trigger | PR em `main` alterando `submissions/*.json` |
 | Runner | `self-hosted` (servidor local) |
 | Concurrency | `avaliador-ingestao` — fila única, sem cancelar em andamento |
 | Cooldown | 15 min (`COOLDOWN_SEC`) após cada avaliação |
@@ -174,7 +174,7 @@ Serviços **sempre ativos** no host (não sobem por submissão):
 
 ## 4. Rede Docker na avaliação
 
-Todos os containers relevantes compartilham a mesma rede Docker (`DOCKER_NETWORK` em `juiz/config.env`).
+Todos os containers relevantes compartilham a mesma rede Docker (`DOCKER_NETWORK` em `evaluator/judge/config.env`).
 
 ```mermaid
 flowchart LR
@@ -207,18 +207,18 @@ sequenceDiagram
     actor P as Participante
     participant GH as GitHub
     participant WF as teste.yml
-    participant AV as avaliador.sh
+    participant AV as evaluator/evaluator.sh
     participant JZ as validar.py
     participant DK as Docker
     participant PG as PostgreSQL
     participant MN as S3 (MinIO lab)
 
-    P->>GH: Abre PR com submissoes/user.json
+    P->>GH: Abre PR com submissions/user.json
     GH->>WF: Dispara Action (self-hosted)
     Note over WF: concurrency: fila única
 
     WF->>WF: Checkout + detecta JSON alterado
-    WF->>AV: ./avaliador.sh submissoes/user.json
+    WF->>AV: ./evaluator/evaluator.sh submissions/user.json
 
     AV->>AV: Diagnóstico (docker, postgres, toolchain)
     AV->>JZ: preflight --participante user
@@ -318,9 +318,9 @@ flowchart TD
 
 | Gate | Responsável | Onde roda |
 | :--- | :--- | :--- |
-| G0 | `avaliador.sh` | Bash + Docker |
+| G0 | `evaluator/evaluator.sh` | Bash + Docker |
 | G1 | `validar.py preflight` | Python |
-| G2 (execução) | `avaliador.sh` + `validar.py` | Bash mede; Python valida |
+| G2 (execução) | `evaluator/evaluator.sh` + `validar.py` | Bash mede; Python valida |
 | G3 (volume) | `validar.py` + SQL | Python |
 | G4 (DQ) | `validar.py` + SQL | Python |
 
@@ -397,7 +397,7 @@ stateDiagram-v2
     [*] --> AguardandoFila: PR aberto
 
     AguardandoFila --> EmAvaliacao: Slot livre<br/>(concurrency group)
-    EmAvaliacao --> Cooldown: avaliador.sh termina<br/>(sucesso ou falha)
+    EmAvaliacao --> Cooldown: evaluator/evaluator.sh termina<br/>(sucesso ou falha)
     Cooldown --> AguardandoFila: sleep COOLDOWN_SEC<br/>(padrão 15 min)
     AguardandoFila --> EmAvaliacao: Próximo PR na fila
 
@@ -445,7 +445,7 @@ graph TB
         end
 
         subgraph Orquestrador["Leve"]
-            AV_SVC["avaliador.sh + juiz<br/>< 50 MB RAM"]
+            AV_SVC["evaluator/evaluator.sh + juiz<br/>< 50 MB RAM"]
         end
     end
 
@@ -455,7 +455,7 @@ graph TB
     style Orquestrador fill:#e3f2fd
 ```
 
-O timeout do pipeline é calculado em `scripts/lib/estimate-timeout.sh` com base em **~48M linhas** a processar (28M + 4×5M), transformação 7→10 colunas e throughput mínimo de 5.000 linhas/s no Celeron. Resultado: **~3h20m (12000 s)**. Detalhes em [STACK_E_LIMITES.md](./STACK_E_LIMITES.md).
+O timeout do pipeline é calculado em `evaluator/scripts/lib/estimate-timeout.sh` com base em **~48M linhas** a processar (28M + 4×5M), transformação 7→10 colunas e throughput mínimo de 5.000 linhas/s no Celeron. Resultado: **~3h20m (12000 s)**. Detalhes em [STACK_E_LIMITES.md](./STACK_E_LIMITES.md).
 
 ---
 
@@ -465,30 +465,36 @@ O timeout do pipeline é calculado em `scripts/lib/estimate-timeout.sh` com base
 ingestao_no_limite/
 ├── .github/workflows/
 │   └── teste.yml              # CI: dispara avaliação no PR
-├── avaliador.sh               # Orquestrador principal
-├── submissoes/
-│   └── *.json                 # Metadados da submissão (participante + repo)
-├── juiz/
-│   ├── validar.py             # Juiz automático (gates + ranking)
-│   ├── run-sql.sh             # Executor SQL (organizador)
-│   ├── config.env.example     # Template de configuração do servidor
-│   ├── requirements.txt       # psycopg2, boto3
-│   └── sql/                   # Gates e métricas (privado — .gitignore)
-├── scripts/
-│   ├── smoke-test.sh          # Validação manual da infra (organizador)
-│   └── lib/
-│       ├── log-run.sh         # Logs estruturados por run
-│       └── estimate-timeout.sh
 ├── docs/
 │   ├── ARCHITECTURE.md        # Este documento
 │   ├── REGRAS_E_CONTRATO.md
 │   ├── STACK_E_LIMITES.md
 │   ├── GATES_E_RANKING.md
 │   └── CHECKLIST_PR.md
-└── logs/                      # Saída de execuções (.gitignore)
-    ├── avaliador/
-    ├── smoke-test/
-    └── run-sql/
+├── submissions/
+│   └── *.json                 # Metadados da submissão (participante + repo)
+├── submitter/                 # Starter — copiar para o repo do participante
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── participante.json.example
+│   └── src/
+└── evaluator/                 # Tooling do servidor (organizadores)
+    ├── evaluator.sh           # Orquestrador principal
+    ├── judge/
+    │   ├── validar.py         # Judge automático (gates + ranking)
+    │   ├── run-sql.sh         # Executor SQL (organizador)
+    │   ├── config.env.example
+    │   ├── requirements.txt
+    │   └── sql/               # Gates e métricas (privado — .gitignore)
+    ├── scripts/
+    │   ├── smoke-test.sh
+    │   └── lib/
+    │       ├── log-run.sh
+    │       └── estimate-timeout.sh
+    └── logs/                  # Saída de execuções (.gitignore)
+        ├── avaliador/
+        ├── smoke-test/
+        └── run-sql/
 ```
 
 ---
@@ -498,8 +504,8 @@ ingestao_no_limite/
 ```mermaid
 flowchart TB
     subgraph Publico["Repositório GitHub (público)"]
-        Code["avaliador.sh, validar.py, docs"]
-        Sub["submissoes/*.json"]
+        Code["evaluator/evaluator.sh, validar.py, docs"]
+        Sub["submissions/*.json"]
         WF2["teste.yml"]
     end
 
@@ -521,24 +527,24 @@ Competidores **não** têm acesso SSH ao servidor. Tudo ocorre automaticamente q
 
 ## 12. Smoke test (organizador)
 
-O `scripts/smoke-test.sh` **não** roda automaticamente em cada submissão. É uma ferramenta de manutenção para validar a infra antes de abrir a fila.
+O `evaluator/scripts/smoke-test.sh` **não** roda automaticamente em cada submissão. É uma ferramenta de manutenção para validar a infra antes de abrir a fila.
 
 ```mermaid
 flowchart LR
-    subgraph Smoke["scripts/smoke-test.sh"]
+    subgraph Smoke["evaluator/scripts/smoke-test.sh"]
         T["Toolchain"]
         L["Layout repo + SQL"]
         DB["Conexão Postgres"]
         PF["Preflight juiz"]
         SE["Seed + avaliar"]
-        FU["--full: avaliador ponta a ponta"]
+        FU["--full: evaluator ponta a ponta"]
     end
 
     T --> L --> DB --> PF --> SE
     SE -.-> FU
 
     subgraph Quando["Quando usar"]
-        W1["Após mudanças no juiz/avaliador"]
+        W1["Após mudanças no evaluator/"]
         W2["Antes de abrir submissões"]
         W3["Debug de infra quebrada"]
     end
@@ -569,9 +575,9 @@ Dados gravados em `db_ingestao.public.ranking_ingestao`. Views para o site: `v_l
 
 | Pergunta | Resposta |
 | :--- | :--- |
-| O que dispara a avaliação? | PR em `main` alterando `submissoes/*.json` |
-| Quem orquestra? | `avaliador.sh` no runner self-hosted |
-| Quem valida regras? | `juiz/validar.py` + SQL privado |
+| O que dispara a avaliação? | PR em `main` alterando `submissions/*.json` |
+| Quem orquestra? | `evaluator/evaluator.sh` no runner self-hosted |
+| Quem valida regras? | `evaluator/judge/validar.py` + SQL privado |
 | Onde o participante grava dados? | `db_empresas.public.{participante}_empresas` |
 | Quantas avaliações em paralelo? | **1** (fila única) |
 | Intervalo entre submissões? | **15 min** de cooldown |

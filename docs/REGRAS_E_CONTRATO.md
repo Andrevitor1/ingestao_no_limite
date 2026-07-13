@@ -2,7 +2,7 @@
 
 Para sua submissão ser **classificada**, a tabela final no PostgreSQL deve cumprir rigorosamente o schema abaixo e **zerar todas as métricas de erro** do Juiz Automático.
 
-As queries executadas pelo juiz estão em [`juiz/sql/gates/`](../juiz/sql/gates/) e [`juiz/sql/metrics/`](../juiz/sql/metrics/).
+As queries executadas pelo juiz estão em [`evaluator/judge/sql/gates/`](../evaluator/judge/sql/gates/) e [`evaluator/judge/sql/metrics/`](../evaluator/judge/sql/metrics/).
 
 ---
 
@@ -67,8 +67,8 @@ Todas as regras abaixo devem ter **0 erros**. Qualquer valor acima de zero repro
 | DQ-07 | `porte_descricao` com valor do mapeamento oficial | **0** |
 | DQ-08 | `razao_social` não termina com 11 dígitos (CPF de MEI) | **0** |
 
-Arquivos SQL por gate: `juiz/sql/gates/dq-01_*.sql` … `dq-08_*.sql`  
-Validação manual de todos: `juiz/sql/gates/run_all_dq_manual.sql`
+Arquivos SQL por gate: `evaluator/judge/sql/gates/dq-01_*.sql` … `dq-08_*.sql`  
+Validação manual de todos: `evaluator/judge/sql/gates/run_all_dq_manual.sql`
 
 ---
 
@@ -90,4 +90,4 @@ A tabela final não pode estar vazia nem fora da faixa esperada para o dataset o
 | Acima do máximo | `ERRO_REGISTROS_DEMAIS` |
 | Dentro da faixa | aprovado |
 
-Os limites exatos (`limite_min`, `limite_max`) são configurados no servidor em `juiz/config.env` e no script `juiz/sql/metrics/volume_sanity.sql`.
+Os limites exatos (`limite_min`, `limite_max`) são configurados no servidor em `evaluator/judge/config.env` e no script `evaluator/judge/sql/metrics/volume_sanity.sql`.

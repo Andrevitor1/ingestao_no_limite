@@ -2,7 +2,7 @@
 
 Este documento define o que **aprova** ou **reprova** uma submissão (gates) e como o **ranking** é calculado entre soluções classificadas.
 
-Scripts SQL executáveis estão em [`juiz/sql/`](../juiz/sql/). Este documento descreve apenas a **lógica** — sem queries.
+Scripts SQL executáveis estão em [`evaluator/judge/sql/`](../evaluator/judge/sql/). Este documento descreve apenas a **lógica** — sem queries.
 
 ---
 
@@ -10,11 +10,11 @@ Scripts SQL executáveis estão em [`juiz/sql/`](../juiz/sql/). Este documento d
 
 ```
 PR aberto
-  → avaliador.sh (orquestrador bash)
-  → preflight via juiz/validar.py (Gate G1)
+  → evaluator/evaluator.sh (orquestrador bash)
+  → preflight via evaluator/judge/validar.py (Gate G1)
   → git clone + docker build (Gate G0)
   → docker run com timeout ~3h20m (Gate G2 — bash)
-  → juiz/validar.py avaliar (Gates G2–G4 + métricas)
+  → evaluator/judge/validar.py avaliar (Gates G2–G4 + métricas)
   → Gravação em ranking_ingestao + recalcular_posicoes_ranking()
   → Comentário no PR + site de ranking
 ```
@@ -23,9 +23,9 @@ PR aberto
 
 | Componente | Responsabilidade |
 | :--- | :--- |
-| `avaliador.sh` | Clone, build (timeout 15 min), docker run, timeout pipeline, pico de RAM |
-| `juiz/validar.py` | Gates SQL, métricas, INSERT ranking |
-| `juiz/sql/` | Queries compartilhadas (gates, métricas, views, site) |
+| `evaluator/evaluator.sh` | Clone, build (timeout 15 min), docker run, timeout pipeline, pico de RAM |
+| `evaluator/judge/validar.py` | Gates SQL, métricas, INSERT ranking |
+| `evaluator/judge/sql/` | Queries compartilhadas (gates, métricas, views, site) |
 
 ---
 
@@ -50,7 +50,7 @@ Executado antes do pipeline completo para evitar horas perdidas em soluções qu
 | :--- | :--- | :--- |
 | Conectividade Postgres | Consegue conectar em `db_empresas` | `ERRO_PREFLIGHT_PG` |
 
-Comando: `python3 juiz/validar.py preflight --participante <user>`
+Comando: `python3 evaluator/judge/validar.py preflight --participante <user>`
 
 ### Gate G2 — Execução do pipeline
 
@@ -72,7 +72,7 @@ Conta os registros na tabela final e compara com `limite_min` e `limite_max` do 
 | `total > limite_max` | `ERRO_REGISTROS_DEMAIS` |
 | Dentro da faixa | aprovado |
 
-Script manual: `juiz/sql/metrics/volume_sanity.sql`
+Script manual: `evaluator/judge/sql/metrics/volume_sanity.sql`
 
 ### Gate G4 — Data Quality
 
@@ -85,7 +85,7 @@ Oito regras de qualidade (DQ-01 a DQ-08). Cada uma conta registros inválidos �
 
 Detalhes de qual gate falhou ficam em `gate_dq_detalhes` (JSON).  
 Regras em linguagem natural: [`REGRAS_E_CONTRATO.md`](./REGRAS_E_CONTRATO.md)  
-Scripts: `juiz/sql/gates/dq-*.sql` e `juiz/sql/gates/run_all_dq_manual.sql`
+Scripts: `evaluator/judge/sql/gates/dq-*.sql` e `evaluator/judge/sql/gates/run_all_dq_manual.sql`
 
 ---
 
@@ -121,7 +121,7 @@ Para exibição visual: `score = tempo + (storage_total × 0.5) + (peak_ram × 0
 
 Resultados gravados em `db_ingestao.public.ranking_ingestao`.
 
-DDL, função de ranking e views: `juiz/sql/schema/ranking_ingestao.sql`
+DDL, função de ranking e views: `evaluator/judge/sql/schema/ranking_ingestao.sql`
 
 ### Campos principais
 
@@ -173,7 +173,7 @@ DDL, função de ranking e views: `juiz/sql/schema/ranking_ingestao.sql`
 | `v_ultima_avaliacao` | Última tentativa — feedback no PR |
 | `v_historico_tentativas` | Todas as execuções — gráficos e debug |
 
-Consultas prontas para rodar no servidor: `juiz/sql/site/consultas_ranking.sql`
+Consultas prontas para rodar no servidor: `evaluator/judge/sql/site/consultas_ranking.sql`
 
 ---
 
