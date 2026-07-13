@@ -1,12 +1,45 @@
 # 📑 Checklist para Envio de Pull Request
 
-Antes de abrir o seu Pull Request para avaliação, verifique se cumpriu todos os pontos abaixo:
+Antes de abrir o Pull Request para avaliação, verifique todos os pontos abaixo:
 
-- [ ] O código lê os arquivos compactados `.zip` sem depender de extração manual prévia no SO.
-- [ ] O `Dockerfile` está na raiz do repositório e instala todas as dependências necessárias.
-- [ ] As variáveis do MinIO/S3 usam o endpoint `localhost:9000`.
-- [ ] O script grava os dados finais em `s3://marketing-leads/silver_empresas`.
-- [ ] O código trata conversão de encoding `ISO-8859-1` para `UTF-8`.
-- [ ] A conversão de vírgula para ponto no `capital_social` foi aplicada.
-- [ ] O filtro de `capital_social > 1000.00` e remoção de CPF na `razao_social` estão ativos.
-- [ ] O container roda e finaliza dentro do limite de **2 GB de RAM**.
+## Estrutura e execução
+
+- [ ] O código lê os arquivos `.zip` em `/data/` sem extração manual prévia no SO.
+- [ ] O `Dockerfile` está na raiz do repositório e instala todas as dependências.
+- [ ] O container inicia e executa o pipeline automaticamente (`CMD`/`ENTRYPOINT`).
+- [ ] O container finaliza dentro do limite de **2 GB de RAM** (sem OOM).
+- [ ] O pipeline completa em menos de **~90 minutos** (dataset oficial ~10 GB descompactados).
+
+## Contrato de dados
+
+- [ ] A tabela final existe em `db_empresas.public.{participante}_empresas`.
+- [ ] O nome da tabela usa exatamente o campo `participante` do JSON + sufixo `_empresas`.
+- [ ] Encoding convertido de `ISO-8859-1` para `UTF-8`.
+- [ ] `capital_social` com vírgula BR convertida para ponto decimal.
+- [ ] Filtro `capital_social > 1000.00` aplicado.
+- [ ] Registros com CPF no final da `razao_social` removidos.
+- [ ] Schema e tipos conforme [REGRAS_E_CONTRATO.md](./REGRAS_E_CONTRATO.md).
+
+## Infraestrutura e variáveis de ambiente
+
+- [ ] O código lê **variáveis de ambiente** (`PG_HOST`, `PG_USER`, `PG_PASSWORD`, `PG_DB`, `PARTICIPANTE`, `PG_TABLE`) — sem hardcode de host/senha.
+- [ ] Na avaliação, Postgres é acessado via `PG_HOST=postgres_db` (não `localhost`).
+- [ ] Dados lidos de `/data/` (zips montados pelo avaliador).
+- [ ] Tabela gravada em `public.{PG_TABLE}` no banco `db_empresas`.
+
+## MinIO (opcional)
+
+- [ ] Endpoint lido de `S3_ENDPOINT` (`http://minio:9000` na avaliação).
+- [ ] Credenciais lidas de `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`.
+- [ ] Arquivos apenas no prefixo `s3://marketing-leads/{PARTICIPANTE}/`.
+
+## Submissão
+
+- [ ] Arquivo `submissoes/seu_usuario.json` criado no fork.
+- [ ] JSON contém `participante` e `repositorio` (URL pública do seu código).
+- [ ] Repositório da solução é público e contém o `Dockerfile` na raiz.
+
+## Antes de abrir o PR
+
+- [ ] Testou localmente com os mesmos limites de RAM/CPU quando possível.
+- [ ] Revisou os [Gates de validação](./GATES_E_RANKING.md) — todas as queries DQ devem retornar 0.

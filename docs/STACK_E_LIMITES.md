@@ -1,24 +1,252 @@
-# 💻 Stack do Servidor e Limitações de Hardware
+# 💻 Stack do Servidor e Acesso na Avaliação
 
-O seu código rodará em uma máquina real com recursos contados. Otimização de I/O, gerenciamento de memória em streaming e escolha das bibliotecas corretas farão toda a diferença.
+O seu código rodará em uma máquina real com recursos contados. Na avaliação por Pull Request, o servidor **injeta variáveis de ambiente** no seu container — você **não precisa** (e não deve) hardcodar senhas ou IPs no código.
 
----
-
-## ⚙️ Especificações da Execução
-
-* **Container Docker Limits:**
-  * Memória RAM Máxima: **2 GB** (`--memory="2g"`)
-  * vCPUs Máximas: **2 CPUs** (`--cpus="2"`)
-* **Armazenamento Alvo:**
-  * Endpoint MinIO S3 Local: `http://localhost:9000`
-  * Bucket Target: `s3://marketing-leads/silver_empresas`
-  * Credenciais de Acesso: `AWS_ACCESS_KEY_ID=admin` | `AWS_SECRET_ACCESS_KEY=minio_password`
-* **Formato de Gravação Esperado:** Parquet / Delta Lake / Iceberg.
+Esta competição simula um cenário real: a infraestrutura é fornecida, mas **a arquitetura do pipeline é decisão sua**.
 
 ---
 
-## ⚠️ Atenção ao Out-Of-Memory (OOM)
+## 🔄 O que acontece quando você abre o PR
 
-Se o seu script tentar carregar todos os arquivos de 4 GB direto na memória RAM de uma só vez, o kernel do Docker vai matar o seu container por **OOM (Exit Code 137)** e você será **desclassificado no teste**.
+1. Você abre um PR no fork com `submissoes/seu_usuario.json`.
+2. O GitHub Action dispara `avaliador.sh` no servidor (**Hardware Celeron**).
+3. O avaliador clona o **seu repositório** (campo `repositorio` do JSON).
+4. Faz `docker build` da **sua imagem** e executa com limites de 2 CPU / 2 GB RAM.
+5. Seu container entra na **mesma rede Docker** do Postgres e do MinIO.
+6. Os dados brutos ficam montados em **`/data/`** (somente leitura).
+7. Ao terminar, o **juiz** valida a tabela `public.{participante}_empresas` e grava o ranking.
 
-💡 *Dica:* Utilize bibliotecas com suporte a processamento em batch/streaming (Polars, DuckDB, PyArrow, Rust ou Go).
+Você **não acessa o servidor por SSH**. Tudo ocorre automaticamente quando o PR é aberto.
+
+---
+
+## 🔑 Variáveis de ambiente (injetadas no seu container)
+
+O avaliador define estas variáveis no `docker run`. **Seu código deve lê-las** — não hardcode hosts ou credenciais.
+
+| Variável | Descrição | Valor na avaliação (PR) |
+| :--- | :--- | :--- |
+| `PARTICIPANTE` | Seu identificador do JSON | ex.: `renan_python` |
+| `PG_TABLE` | Nome da tabela final | ex.: `renan_python_empresas` |
+| `PG_HOST` | Host do Postgres na rede Docker | `postgres_db` |
+| `PG_PORT` | Porta Postgres | `5432` |
+| `PG_USER` | Usuário Postgres | `homelab_postgres` |
+| `PG_PASSWORD` | Senha Postgres | *(injetada pelo servidor)* |
+| `PG_DB` | Banco de destino | `db_empresas` |
+| `S3_ENDPOINT` | Endpoint MinIO | `http://minio:9000` |
+| `AWS_ACCESS_KEY_ID` | Credencial MinIO | `admin` |
+| `AWS_SECRET_ACCESS_KEY` | Credencial MinIO | `minio_password` |
+| `MINIO_BUCKET` | Bucket S3 | `marketing-leads` |
+
+### Regra de ouro
+
+> Dentro do container na avaliação, use **`postgres_db`** e **`minio`** como hosts — **não** use `localhost` para Postgres ou MinIO.  
+> `localhost` dentro do container aponta para o próprio container, não para o servidor.
+
+### Tabela e path de saída
+
+| Item | Como obter no código |
+| :--- | :--- |
+| Tabela Postgres | `public.{PG_TABLE}` ou `public.{PARTICIPANTE}_empresas` |
+| Prefixo MinIO (opcional) | `s3://{MINIO_BUCKET}/{PARTICIPANTE}/` |
+
+---
+
+## 🗄️ PostgreSQL (destino obrigatório)
+
+| Item | Na avaliação (dentro do container) | No seu PC (dev local) |
+| :--- | :--- | :--- |
+| Host | `postgres_db` (via `PG_HOST`) | `localhost` ou IP da LAN |
+| Porta | `5432` | `5432` |
+| Banco | `db_empresas` | `db_empresas` |
+| Schema | `public` | `public` |
+| Tabela final | `{participante}_empresas` | idem |
+| Usuário | `homelab_postgres` | idem |
+
+O banco `db_ingestao` / tabela `ranking_ingestao` é **interno da competição** — não grave seus dados de negócio lá.
+
+---
+
+## 📦 MinIO / S3 (opcional)
+
+| Item | Na avaliação (dentro do container) | No seu PC (dev local) |
+| :--- | :--- | :--- |
+| Endpoint | `http://minio:9000` (via `S3_ENDPOINT`) | `http://localhost:9000` |
+| Bucket | `marketing-leads` | idem |
+| Prefixo | `{participante}/` | idem |
+| Credenciais | via `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | `admin` / `minio_password` |
+
+MinIO é opcional. Se usar, limite-se ao seu prefixo — conta para o ranking de storage.
+
+---
+
+## 📂 Dados brutos (`/data/`)
+
+| Item | Valor |
+| :--- | :--- |
+| Caminho no container | `/data/` |
+| Conteúdo | Arquivos `.zip` com CSVs empresariais |
+| Montagem | Feita pelo avaliador (`DATA_VOLUME` no servidor) |
+| Permissão | Somente leitura (`:ro`) |
+
+Seu pipeline deve ler os zips **diretamente** de `/data/`, sem depender de download ou extração manual no host.
+
+---
+
+## 🧪 Desenvolvimento local vs avaliação no PR
+
+| Aspecto | Local (seu PC) | Avaliação (PR no servidor) |
+| :--- | :--- | :--- |
+| Quem roda o Docker | Você | `avaliador.sh` |
+| `PG_HOST` | `localhost` | `postgres_db` |
+| `S3_ENDPOINT` | `http://localhost:9000` | `http://minio:9000` |
+| `/data/` | Você monta com `-v` | Montado automaticamente |
+| Limites CPU/RAM | Opcional | **2 CPU / 2 GB** (obrigatório) |
+| Timeout | Opcional | **~90 minutos** (calculado para o dataset oficial) |
+
+### Exemplo: ler variáveis no código (Python)
+
+```python
+import os
+
+PARTICIPANTE = os.environ["PARTICIPANTE"]
+PG_TABLE = os.environ.get("PG_TABLE", f"{PARTICIPANTE}_empresas")
+
+pg_dsn = (
+    f"postgresql://{os.environ['PG_USER']}:{os.environ['PG_PASSWORD']}"
+    f"@{os.environ.get('PG_HOST', 'postgres_db')}:{os.environ.get('PG_PORT', '5432')}"
+    f"/{os.environ.get('PG_DB', 'db_empresas')}"
+)
+
+s3_endpoint = os.environ.get("S3_ENDPOINT", "http://minio:9000")
+s3_bucket = os.environ.get("MINIO_BUCKET", "marketing-leads")
+s3_prefix = f"{PARTICIPANTE}/"
+```
+
+### Exemplo: testar localmente com os mesmos limites do servidor
+
+```bash
+docker run --rm \
+  --cpus="2.0" --memory="2g" \
+  --network homelab_net \
+  -v /caminho/para/zips:/data:ro \
+  -e PARTICIPANTE=renan_python \
+  -e PG_TABLE=renan_python_empresas \
+  -e PG_HOST=postgres_db \
+  -e PG_PORT=5432 \
+  -e PG_USER=homelab_postgres \
+  -e PG_PASSWORD='sua_senha' \
+  -e PG_DB=db_empresas \
+  -e S3_ENDPOINT=http://minio:9000 \
+  -e AWS_ACCESS_KEY_ID=admin \
+  -e AWS_SECRET_ACCESS_KEY=minio_password \
+  -e MINIO_BUCKET=marketing-leads \
+  sua-imagem
+```
+
+Substitua `homelab_net` pela rede Docker onde `postgres_db` e `minio` estão rodando.
+
+---
+
+## ⚙️ Limites de hardware
+
+| Recurso | Limite |
+| :--- | :--- |
+| Memória RAM | **2 GB** (sem swap — `--memory-swap=2g`) |
+| vCPUs | **2** |
+| Timeout | **~90 minutos** (5400 s — ver estimativa abaixo) |
+| Build da imagem | **15 min** máx., 1 CPU / 1 GB RAM (não conta no tempo do pipeline) |
+
+Se o processo estourar RAM, o container morre com **exit code 137** (OOM) e a submissão é desclassificada.
+
+O orquestrador (`avaliador.sh` + juiz) é leve: o build usa no máximo 1 CPU / 1 GB; o pipeline do participante recebe os 2 CPU / 2 GB completos.
+
+---
+
+## 📦 Perfil do dataset oficial
+
+| Item | Valor |
+| :--- | :--- |
+| Arquivos `.zip` em `/data/` | **5** |
+| Tamanho comprimido (total) | **~1 GB** |
+| Primeiro arquivo descompactado | **~2 GB** |
+| Total descompactado (estimativa) | **~8–10 GB** |
+| Registros finais esperados | **500k – 15M** (após filtros B2B) |
+
+---
+
+## ⏱️ Estimativa do timeout do pipeline
+
+O limite de **45 minutos** era apertado para o dataset real. Com ~10 GB de CSV para processar em um Celeron (2 CPU / 2 GB RAM), soluções corretas porém não ultra-otimizadas podiam estourar o tempo.
+
+### Fórmula
+
+```
+timeout = (DATA_UNCOMPRESSED_MB / THROUGHPUT_FLOOR_MBPS) × (1 + MARGIN%)
+```
+
+Valores padrão no servidor (`juiz/config.env`):
+
+| Variável | Valor | Significado |
+| :--- | :--- | :--- |
+| `DATA_UNCOMPRESSED_MB` | `10240` | ~10 GB descompactados |
+| `PIPELINE_THROUGHPUT_FLOOR_MBPS` | `2.5` | MB/s mínimo sustentado no Celeron |
+| `PIPELINE_TIMEOUT_MARGIN_PCT` | `25` | Margem para carga no Postgres e variação |
+| `PIPELINE_TIMEOUT_SEC` | `5400` | Resultado: **90 minutos** |
+
+```
+(10240 / 2.5) × 1.25 = 5120 s ≈ 85 min → arredondado para 90 min
+```
+
+### Referência rápida
+
+| Timeout | Throughput médio exigido (~10 GB) |
+| :--- | :--- |
+| 45 min | ~3,8 MB/s — só soluções bem otimizadas |
+| 60 min | ~2,8 MB/s |
+| **90 min** | **~1,9 MB/s** — margem para pipelines corretos em streaming |
+
+Para recalcular: `source scripts/lib/estimate-timeout.sh && compute_pipeline_timeout`
+
+### Servidor de avaliação (organizadores)
+
+| Recurso | Recomendação |
+| :--- | :--- |
+| RAM do host | **≥ 6 GB** (2 GB participante + Postgres + MinIO + SO) |
+| Avaliações simultâneas | **1** (fila única) |
+| Build vs pipeline | Tempos separados — build limitado a 15 min / 1 CPU |
+
+💡 *Dica:* use processamento em batch/streaming (Polars, DuckDB, PyArrow, Rust ou Go).
+
+---
+
+## 🧠 Estratégias arquiteturais
+
+| Abordagem | Quando faz sentido |
+| :--- | :--- |
+| ZIP → Postgres direto | Simplicidade, BI plug-and-play |
+| ZIP → Parquet (MinIO) → Postgres | Grandes volumes, batches controlados |
+| ZIP → DuckDB/Polars → ambos | Uma engine, múltiplos sinks |
+| Apenas MinIO | **Não classifica** — Postgres é obrigatório |
+
+---
+
+## ⏳ Fila e avaliação
+
+* **1 avaliação por vez** no servidor
+* PRs do mesmo participante: apenas o **mais recente** é avaliado
+* Resultado gravado em `ranking_ingestao` e publicado no PR
+
+---
+
+## 🛠️ Referência interna (organizadores)
+
+Configuração do servidor em `juiz/config.env`:
+
+| Variável | Função |
+| :--- | :--- |
+| `DOCKER_NETWORK` | Rede compartilhada entre container do participante, Postgres e MinIO |
+| `DATA_VOLUME` | Volume montado em `/data/` (ex.: `/path/zips:/data:ro`) |
+| `PG_CONTAINER` | Nome do container Postgres (`postgres_db`) |
+
+Participantes **não** editam `juiz/config.env` — isso é só no servidor de avaliação.

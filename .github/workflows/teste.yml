@@ -6,9 +6,21 @@ on:
       - 'submissoes/*.json'
     branches: [ main ]
 
+# Fila única: uma submissão por vez. cancel-in-progress=false enfileira em vez de cancelar.
+# O passo final de cooldown mantém o slot ocupado, garantindo o intervalo entre avaliações.
+concurrency:
+  group: avaliador-ingestao
+  cancel-in-progress: false
+
 jobs:
   avaliar:
     runs-on: self-hosted
+    env:
+      PR_NUMERO: ${{ github.event.pull_request.number }}
+      GITHUB_RUN_ID: ${{ github.run_id }}
+      GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+      # Intervalo de cortesia entre submissões (segundos). Padrão: 15 min.
+      COOLDOWN_SEC: ${{ vars.COOLDOWN_SEC || '900' }}
     steps:
       - name: Checkout do PR
         uses: actions/checkout@v4
@@ -23,10 +35,9 @@ jobs:
 
       - name: Executar Avaliacao Oficial no Servidor
         run: |
-          # Pega o primeiro arquivo JSON detectado pela Action
-          CHANGED_FILE="${{ steps.changed-files.outputs.all_changed_files }}"
+          set -eo pipefail
 
-          # Se vier multiplos arquivos no PR, pega apenas o primeiro da lista
+          CHANGED_FILE="${{ steps.changed-files.outputs.all_changed_files }}"
           CHANGED_FILE=$(echo "$CHANGED_FILE" | awk '{print $1}')
 
           if [ -z "$CHANGED_FILE" ]; then
@@ -34,9 +45,29 @@ jobs:
             exit 1
           fi
 
+          _LOG_SLUG="$(basename "$CHANGED_FILE" .json)"
+          [ -n "${PR_NUMERO:-}" ] && _LOG_SLUG="${_LOG_SLUG}_pr${PR_NUMERO}"
+          [ -n "${GITHUB_RUN_ID:-}" ] && _LOG_SLUG="${_LOG_SLUG}_run${GITHUB_RUN_ID}"
+
+          # shellcheck disable=SC1091
+          source scripts/lib/log-run.sh
+          log_run_init workflow "$_LOG_SLUG"
+          trap 'log_run_finish $?' EXIT
+
           echo "================================================="
           echo "--> Arquivo de submissao detectado: $CHANGED_FILE"
+          echo "--> PR: ${PR_NUMERO:-n/a} | Run: ${GITHUB_RUN_ID:-n/a}"
           echo "================================================="
 
           chmod +x avaliador.sh
           ./avaliador.sh "$CHANGED_FILE"
+
+      - name: Intervalo de cortesia (fairness)
+        if: always()
+        run: |
+          set -eo pipefail
+          COOLDOWN="${COOLDOWN_SEC:-900}"
+          echo "================================================="
+          echo "--> Aguardando ${COOLDOWN}s antes de liberar a fila para a próxima submissão."
+          echo "================================================="
+          sleep "$COOLDOWN"

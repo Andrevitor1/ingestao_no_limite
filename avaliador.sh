@@ -1,196 +1,284 @@
 #!/bin/bash
+# Orquestrador fino — clone, docker build/run, delega gates ao juiz/validar.py
 set -eo pipefail
+export LC_NUMERIC=C
 
-# ==============================================================================
-# CONFIGURAÇÕES DA INFRAESTRUTURA
-# ==============================================================================
-PG_CONTAINER="postgres_db"
-PG_USER="homelab_postgres"
-PG_DB="db_ingestao"
-PG_PASS="kmdop9se27!"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+JUIZ_DIR="$SCRIPT_DIR/juiz"
 
-DIR_TESTES="/tmp/testes_ingestao"
-CONTAINER_APP_NAME="app_submissao_test"
+# ------------------------------------------------------------------------------
+# Logs (stdout/stderr → logs/avaliador/)
+# ------------------------------------------------------------------------------
+JSON_FILE="${1:-}"
+_LOG_SLUG="${LOG_RUN_SLUG:-$(basename "${JSON_FILE:-sem-json}" .json)}"
+[[ -n "${PR_NUMERO:-}" ]] && _LOG_SLUG="${_LOG_SLUG}_pr${PR_NUMERO}"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/scripts/lib/log-run.sh"
+log_run_init avaliador "$_LOG_SLUG"
+trap 'log_run_finish $?' EXIT
 
-# ==============================================================================
-# FUNÇÕES DE LOGS E FORMATAÇÃO VISUAL
-# ==============================================================================
-log_info() {
-    echo -e "[\033[1;34mINFO\033[0m] $(date +'%Y-%m-%d %H:%M:%S') - $1"
+# ------------------------------------------------------------------------------
+# Configuração (juiz/config.env sobrescreve defaults)
+# ------------------------------------------------------------------------------
+PG_CONTAINER="${PG_CONTAINER:-postgres_db}"
+DIR_TESTES="${DIR_TESTES:-/tmp/testes_ingestao}"
+CONTAINER_APP_NAME="${CONTAINER_APP_NAME:-app_submissao_test}"
+DOCKER_NETWORK="${DOCKER_NETWORK:-}"
+DATA_VOLUME="${DATA_VOLUME:-}"
+BUILD_TIMEOUT_SEC="${BUILD_TIMEOUT_SEC:-900}"
+BUILD_CPU_LIMIT="${BUILD_CPU_LIMIT:-1.0}"
+BUILD_MEM_LIMIT="${BUILD_MEM_LIMIT:-1g}"
+
+if [[ -f "${JUIZ_CONFIG:-$JUIZ_DIR/config.env}" ]]; then
+    # shellcheck disable=SC1091
+    set -a && source "${JUIZ_CONFIG:-$JUIZ_DIR/config.env}" && set +a
+fi
+
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/scripts/lib/estimate-timeout.sh"
+PIPELINE_TIMEOUT_SEC="$(resolve_pipeline_timeout)"
+
+# ------------------------------------------------------------------------------
+# Logs
+# ------------------------------------------------------------------------------
+log_info()  { echo -e "[\033[1;34mINFO\033[0m]    $(date +'%H:%M:%S') - $*"; }
+log_ok()    { echo -e "[\033[1;32mOK\033[0m]      $(date +'%H:%M:%S') - $*"; }
+log_warn()  { echo -e "[\033[1;33mALERTA\033[0m] $(date +'%H:%M:%S') - $*"; }
+log_error() { echo -e "[\033[1;31mERRO\033[0m]    $(date +'%H:%M:%S') - $*"; }
+
+# ------------------------------------------------------------------------------
+# Juiz Python
+# ------------------------------------------------------------------------------
+run_juiz() {
+    python3 "$JUIZ_DIR/validar.py" "$@"
 }
 
-log_success() {
-    echo -e "[\033[1;32mSUCESSO\033[0m] $(date +'%Y-%m-%d %H:%M:%S') - $1"
+juiz_registrar() {
+    local participante="$1" status="$2" repositorio="${3:-}"
+    local args=(registrar --participante "$participante" --status "$status")
+    [[ -n "$repositorio" ]] && args+=(--repositorio "$repositorio")
+    run_juiz "${args[@]}" || log_warn "Falha ao registrar status $status no ranking"
 }
 
-log_warn() {
-    echo -e "[\033[1;33mALERTA\033[0m] $(date +'%Y-%m-%d %H:%M:%S') - $1"
+parse_mem_mb() {
+    local raw="$1" num unit
+    num=$(echo "$raw" | grep -oE '^[0-9.]+' || echo "0")
+    unit=$(echo "$raw" | grep -oE '[A-Za-z]+$' || echo "B")
+    case "$unit" in
+        GiB) awk "BEGIN {printf \"%.2f\", $num * 1024}" ;;
+        MiB) awk "BEGIN {printf \"%.2f\", $num}" ;;
+        KiB) awk "BEGIN {printf \"%.2f\", $num / 1024}" ;;
+        *)   echo "0" ;;
+    esac
 }
 
-log_error() {
-    echo -e "[\033[1;31mERRO\033[0m] $(date +'%Y-%m-%d %H:%M:%S') - $1"
+track_peak_ram() {
+    local container="$1" peak_file="$2"
+    echo "0" > "$peak_file"
+
+    # Aguarda o container aparecer (build pode demorar)
+    local waited=0
+    while ! docker ps -q -f "name=^${container}$" 2>/dev/null | grep -q .; do
+        sleep 0.5
+        waited=$((waited + 1))
+        [[ $waited -ge 120 ]] && return
+    done
+
+    while docker ps -q -f "name=^${container}$" 2>/dev/null | grep -q .; do
+        local raw mb current peak
+        raw=$(docker stats --no-stream --format '{{.MemUsage}}' "$container" 2>/dev/null | awk '{print $1}')
+        mb=$(parse_mem_mb "$raw")
+        current=$(cat "$peak_file")
+        peak=$(awk "BEGIN {print ($mb > $current) ? $mb : $current}")
+        echo "$peak" > "$peak_file"
+        sleep 1
+    done
 }
 
-# ==============================================================================
-# FUNÇÃO DE BANCO DE DADOS (POSTGRESQL)
-# ==============================================================================
-gravar_ranking() {
-    local tag="$1"
-    # Garante a substituição de vírgula por ponto para evitar rejeição no Postgres
-    local tempo=$(echo "$2" | tr ',' '.')
-    local tamanho=$(echo "$3" | tr ',' '.')
-    local status="$4"
-
-    log_info "Persistindo resultado no Postgres (Status: $status | Tempo: ${tempo}s)..."
-
-    if docker exec -e PGPASSWORD="$PG_PASS" "$PG_CONTAINER" \
-      psql -U "$PG_USER" -d "$PG_DB" \
-      -c "INSERT INTO ranking_ingestao (github_user, tempo_segundos, tamanho_mb, status) VALUES ('$tag', $tempo, $tamanho, '$status');"; then
-        log_success "Dados inseridos com sucesso na tabela 'ranking_ingestao'."
-    else
-        log_error "Falha ao gravar registro no PostgreSQL."
-    fi
-}
-
-# ==============================================================================
-# 1. VERIFICAÇÃO E DIAGNÓSTICO DO AMBIENTE LOCAL
-# ==============================================================================
+# ------------------------------------------------------------------------------
+# Diagnóstico inicial
+# ------------------------------------------------------------------------------
 echo -e "\n================================================="
-echo "  🔍 DIAGNÓSTICO INICIAL DO SERVIDOR DE AVALIAÇÃO"
+echo "  DIAGNÓSTICO — SERVIDOR DE AVALIAÇÃO"
 echo -e "=================================================\n"
 
-log_info "Verificando dependências de sistema (jq, git, docker)..."
-for cmd in jq git docker; do
-    if ! command -v $cmd &> /dev/null; then
-        log_error "Ferramenta essencial não encontrada no sistema: $cmd"
-        exit 1
-    fi
+for cmd in jq git docker python3; do
+    command -v "$cmd" &>/dev/null || { log_error "Dependência ausente: $cmd"; exit 1; }
 done
-log_success "Todas as ferramentas essenciais estão instaladas."
 
-log_info "Verificando se o serviço Docker está ativo..."
-if ! docker info > /dev/null 2>&1; then
-    log_error "O daemon do Docker não está rodando ou o usuário atual não tem permissão."
-    exit 1
-fi
-log_success "Serviço Docker operacional."
+docker info &>/dev/null || { log_error "Docker não está operacional"; exit 1; }
+docker ps --format '{{.Names}}' | grep -q "^${PG_CONTAINER}$" \
+    || { log_error "Container PostgreSQL '$PG_CONTAINER' não está rodando"; exit 1; }
 
-log_info "Verificando disponibilidade do container PostgreSQL ('$PG_CONTAINER')..."
-if ! docker ps --format '{{.Names}}' | grep -q "^${PG_CONTAINER}$"; then
-    log_error "Container $PG_CONTAINER não encontrado rodando! Verifique seu docker ps."
-    exit 1
-fi
-log_success "Container de banco de dados '$PG_CONTAINER' ativo."
+log_ok "Ambiente pronto (docker, postgres, python3)"
+log_info "Orquestrador leve — recursos reservados para o container do participante"
+print_timeout_estimate | while IFS= read -r line; do log_info "$line"; done
 
-# ==============================================================================
-# 2. VALIDAÇÃO DA SUBMISSÃO (ARQUIVO JSON)
-# ==============================================================================
-JSON_FILE="$1"
+# ------------------------------------------------------------------------------
+# JSON de submissão (Gate G0 — parcial no bash)
+# ------------------------------------------------------------------------------
+[[ -n "$JSON_FILE" ]] || { log_error "Uso: ./avaliador.sh submissoes/nome.json"; exit 1; }
+[[ -f "$JSON_FILE" ]] || { log_error "Arquivo não encontrado: $JSON_FILE"; exit 1; }
 
-if [ -z "$JSON_FILE" ]; then
-    log_error "Nenhum arquivo JSON foi informado como parâmetro."
-    echo "Uso: ./avaliador.sh submissoes/nome_do_arquivo.json"
-    exit 1
-fi
+jq empty "$JSON_FILE" 2>/dev/null || { log_error "JSON inválido: $JSON_FILE"; exit 1; }
 
-if [ ! -f "$JSON_FILE" ]; then
-    log_error "Arquivo de submissão não encontrado: $JSON_FILE"
-    exit 1
-fi
-
-log_info "Validando estrutura do arquivo JSON '$JSON_FILE'..."
-if ! jq empty "$JSON_FILE" > /dev/null 2>&1; then
-    log_error "O arquivo $JSON_FILE contém sintaxe JSON inválida!"
-    exit 1
-fi
-
-PARTICIPANTE_TAG=$(jq -r '.participante // empty' "$JSON_FILE")
+PARTICIPANTE=$(jq -r '.participante // empty' "$JSON_FILE")
 REPO_URL=$(jq -r '.repositorio // empty' "$JSON_FILE")
+echo "participante=$PARTICIPANTE" >> "$RUN_LOG_META"
+echo "repositorio=$REPO_URL" >> "$RUN_LOG_META"
 
-if [ -z "$PARTICIPANTE_TAG" ] || [ -z "$REPO_URL" ]; then
-    log_error "O JSON precisa conter obrigatoriamente os campos 'participante' e 'repositorio'."
-    exit 1
-fi
+[[ -n "$PARTICIPANTE" && -n "$REPO_URL" ]] \
+    || { log_error "JSON precisa de 'participante' e 'repositorio'"; exit 1; }
+
+PG_TABLE="${PARTICIPANTE}_empresas"
 
 echo -e "\n================================================="
-echo "  🚀 INICIANDO AVALIAÇÃO DO PARTICIPANTE: $PARTICIPANTE_TAG"
-echo "  📂 REPOSITÓRIO: $REPO_URL"
+echo "  PARTICIPANTE: $PARTICIPANTE"
+echo "  REPOSITÓRIO:  $REPO_URL"
+echo "  TABELA:       public.$PG_TABLE"
 echo -e "=================================================\n"
 
-# ==============================================================================
-# 3. PREPARAÇÃO DO AMBIENTE E CLONE DO REPOSITÓRIO DO PARTICIPANTE
-# ==============================================================================
-DIR_PARTICIPANTE="$DIR_TESTES/$PARTICIPANTE_TAG"
-
-log_info "Limpando diretórios temporários antigos em $DIR_PARTICIPANTE..."
-rm -rf "$DIR_PARTICIPANTE"
-mkdir -p "$DIR_PARTICIPANTE"
-
-log_info "Clonando o repositório do participante em /tmp..."
-if ! git clone --depth 1 "$REPO_URL" "$DIR_PARTICIPANTE" > /dev/null 2>&1; then
-    log_error "Falha crítica ao clonar o repositório do participante!"
-    gravar_ranking "$PARTICIPANTE_TAG" "0.000" "0.00" "ERRO_CLONE_GIT"
+# ------------------------------------------------------------------------------
+# Gate G1 — Preflight (juiz)
+# ------------------------------------------------------------------------------
+log_info "Preflight (Postgres db_empresas)..."
+if ! run_juiz preflight --participante "$PARTICIPANTE"; then
+    juiz_registrar "$PARTICIPANTE" "ERRO_PREFLIGHT_PG" "$REPO_URL"
     exit 1
 fi
-log_success "Repositório clonado com sucesso em $DIR_PARTICIPANTE."
+log_ok "Preflight aprovado"
 
-cd "$DIR_PARTICIPANTE"
+# ------------------------------------------------------------------------------
+# Clone + Dockerfile (Gate G0)
+# ------------------------------------------------------------------------------
+DIR_PARTICIPANTE="$DIR_TESTES/$PARTICIPANTE"
+rm -rf "$DIR_PARTICIPANTE" && mkdir -p "$DIR_PARTICIPANTE"
 
-if [ ! -f "Dockerfile" ]; then
-    log_error "Dockerfile não foi encontrado na raiz do repositório do participante!"
-    gravar_ranking "$PARTICIPANTE_TAG" "0.000" "0.00" "DOCKERFILE_AUSENTE"
+log_info "Clonando repositório..."
+if ! git clone --depth 1 "$REPO_URL" "$DIR_PARTICIPANTE"; then
+    juiz_registrar "$PARTICIPANTE" "ERRO_CLONE_GIT" "$REPO_URL"
     exit 1
 fi
 
-# ==============================================================================
-# 4. BUILD DA IMAGEM DOCKER
-# ==============================================================================
-NOME_IMAGEM="submissao_$PARTICIPANTE_TAG"
+COMMIT_SHA=$(git -C "$DIR_PARTICIPANTE" rev-parse HEAD 2>/dev/null || echo "")
 
-log_info "Iniciando o build da imagem Docker ($NOME_IMAGEM)..."
-if ! docker build -t "$NOME_IMAGEM" . ; then
-    log_error "Falha na compilação do Dockerfile!"
-    gravar_ranking "$PARTICIPANTE_TAG" "0.000" "0.00" "ERRO_BUILD_DOCKER"
+[[ -f "$DIR_PARTICIPANTE/Dockerfile" ]] || {
+    juiz_registrar "$PARTICIPANTE" "DOCKERFILE_AUSENTE" "$REPO_URL"
+    exit 1
+}
+
+# ------------------------------------------------------------------------------
+# Build (Gate G0)
+# ------------------------------------------------------------------------------
+NOME_IMAGEM="submissao_${PARTICIPANTE}"
+log_info "Build Docker ($NOME_IMAGEM, timeout ${BUILD_TIMEOUT_SEC}s)..."
+BUILD_LIMIT_ARGS=()
+if docker build --help 2>&1 | grep -q -- '--cpus'; then
+    BUILD_LIMIT_ARGS=(--cpus="$BUILD_CPU_LIMIT" --memory="$BUILD_MEM_LIMIT")
+    log_info "Build limitado a ${BUILD_CPU_LIMIT} CPU / ${BUILD_MEM_LIMIT}"
+fi
+set +e
+timeout "$BUILD_TIMEOUT_SEC" docker build "${BUILD_LIMIT_ARGS[@]}" -t "$NOME_IMAGEM" "$DIR_PARTICIPANTE"
+BUILD_EXIT=$?
+set -e
+if [[ $BUILD_EXIT -eq 124 ]]; then
+    juiz_registrar "$PARTICIPANTE" "ERRO_BUILD_TIMEOUT" "$REPO_URL"
+    exit 1
+elif [[ $BUILD_EXIT -ne 0 ]]; then
+    juiz_registrar "$PARTICIPANTE" "ERRO_BUILD_DOCKER" "$REPO_URL"
     exit 1
 fi
-log_success "Imagem Docker construída com sucesso."
+log_ok "Imagem construída"
 
-# ==============================================================================
-# 5. EXECUÇÃO CONTROLADA COM LIMITES DE RECURSOS (2 vCPUs, 2 GB RAM)
-# ==============================================================================
-docker rm -f "$CONTAINER_APP_NAME" > /dev/null 2>&1 || true
+# ------------------------------------------------------------------------------
+# Execução (Gate G2 — orquestração no bash, validação no juiz)
+# ------------------------------------------------------------------------------
+docker rm -f "$CONTAINER_APP_NAME" &>/dev/null || true
 
-log_info "Disparando container com limites de hardware (2 vCPUs, 2 GB RAM)..."
+DOCKER_ARGS=(
+    --name "$CONTAINER_APP_NAME"
+    --cpus="2.0"
+    --memory="2g"
+    --memory-swap="2g"
+    --pids-limit=512
+    -e "PARTICIPANTE=$PARTICIPANTE"
+    -e "PG_TABLE=$PG_TABLE"
+    -e "PG_HOST=${PG_HOST:-postgres_db}"
+    -e "PG_PORT=${PG_PORT:-5432}"
+    -e "PG_USER=${PG_USER:-homelab_postgres}"
+    -e "PG_PASSWORD=${PG_PASSWORD:-}"
+    -e "PG_DB=${PG_DB_EMPRESAS:-db_empresas}"
+    -e "S3_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}"
+    -e "AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY:-admin}"
+    -e "AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY:-minio_password}"
+    -e "MINIO_BUCKET=${MINIO_BUCKET:-marketing-leads}"
+    -e "POLARS_SKIP_CPU_CHECK=1"
+)
+
+[[ -n "$DOCKER_NETWORK" ]] && DOCKER_ARGS+=(--network "$DOCKER_NETWORK")
+[[ -n "$DATA_VOLUME" ]] && DOCKER_ARGS+=(-v "$DATA_VOLUME")
+
+PEAK_RAM_FILE=$(mktemp)
 START_TIME=$(date +%s.%N)
+EXIT_CODE=0
+TIMED_OUT=false
 
-if docker run --name "$CONTAINER_APP_NAME" \
-    --cpus="2.0" \
-    --memory="2g" \
-    -e POLARS_SKIP_CPU_CHECK=1 \
-    "$NOME_IMAGEM"; then
-    
-    END_TIME=$(date +%s.%N)
-    DURATION_SEC=$(awk "BEGIN {print $END_TIME - $START_TIME}" | tr ',' '.')
-    log_success "Execução concluída em ${DURATION_SEC}s!"
-    
-    STORAGE_MB=150.00
-    STATUS_FINAL="CLASSIFICADO"
-else
-    log_error "O container do participante falhou ou excedeu o limite de memória (OOM)!"
-    DURATION_SEC="0.000"
-    STORAGE_MB="0.00"
-    STATUS_FINAL="ERRO_EXECUCAO"
-fi
+log_info "Executando pipeline (timeout $(format_timeout_human "$PIPELINE_TIMEOUT_SEC"), 2 CPU, 2 GB RAM, sem swap)..."
 
-# ==============================================================================
-# 6. LIMPEZA E REGISTRO FINAL
-# ==============================================================================
-log_info "Removendo container de teste e imagens temporárias..."
-docker rm -f "$CONTAINER_APP_NAME" > /dev/null 2>&1 || true
-docker rmi -f "$NOME_IMAGEM" > /dev/null 2>&1 || true
+track_peak_ram "$CONTAINER_APP_NAME" "$PEAK_RAM_FILE" &
+TRACKER_PID=$!
 
-gravar_ranking "$PARTICIPANTE_TAG" "$DURATION_SEC" "$STORAGE_MB" "$STATUS_FINAL"
+set +e
+timeout "$PIPELINE_TIMEOUT_SEC" docker run "${DOCKER_ARGS[@]}" "$NOME_IMAGEM"
+EXIT_CODE=$?
+set -e
+
+[[ $EXIT_CODE -eq 124 ]] && TIMED_OUT=true
+
+sleep 1
+kill "$TRACKER_PID" 2>/dev/null || true
+wait "$TRACKER_PID" 2>/dev/null || true
+
+END_TIME=$(date +%s.%N)
+DURATION_SEC=$(awk "BEGIN {printf \"%.3f\", $END_TIME - $START_TIME}")
+PEAK_RAM_MB=$(tr ',' '.' < "$PEAK_RAM_FILE")
+rm -f "$PEAK_RAM_FILE"
+
+log_info "Execução finalizada — exit=$EXIT_CODE tempo=${DURATION_SEC}s pico_ram=${PEAK_RAM_MB}MB"
+
+# ------------------------------------------------------------------------------
+# Limpeza Docker
+# ------------------------------------------------------------------------------
+docker rm -f "$CONTAINER_APP_NAME" &>/dev/null || true
+docker rmi -f "$NOME_IMAGEM" &>/dev/null || true
+
+# ------------------------------------------------------------------------------
+# Gates G2–G4 + métricas + ranking (juiz)
+# ------------------------------------------------------------------------------
+JUIZ_ARGS=(
+    avaliar
+    --participante "$PARTICIPANTE"
+    --repositorio "$REPO_URL"
+    --tempo "$DURATION_SEC"
+    --exit-code "$EXIT_CODE"
+    --peak-ram-mb "$PEAK_RAM_MB"
+    --timed-out "$TIMED_OUT"
+)
+[[ -n "$COMMIT_SHA" ]] && JUIZ_ARGS+=(--commit-sha "$COMMIT_SHA")
+[[ -n "${PR_NUMERO:-}" ]] && JUIZ_ARGS+=(--pr-numero "$PR_NUMERO")
+
+log_info "Juiz automático validando gates e gravando ranking..."
+set +e
+run_juiz "${JUIZ_ARGS[@]}"
+JUIZ_EXIT=$?
+set -e
 
 echo -e "\n================================================="
-echo "  🏁 PROCESSO DE AVALIAÇÃO CONCLUÍDO ($STATUS_FINAL)"
+if [[ $JUIZ_EXIT -eq 0 ]]; then
+    echo "  AVALIAÇÃO CONCLUÍDA — CLASSIFICADO"
+else
+    echo "  AVALIAÇÃO CONCLUÍDA — NÃO CLASSIFICADO"
+fi
 echo -e "=================================================\n"
+
+exit $JUIZ_EXIT

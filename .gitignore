@@ -1,0 +1,27 @@
+# Segredos e SQL do juiz (não vão para o repositório público)
+juiz/config.env
+juiz/sql/
+juiz/run-sql.sh
+.venv-smoke/
+juiz/README.md
+
+# Ambiente virtual Python
+juiz/.venv/
+juiz/__pycache__/
+
+# Logs de execução (stdout/stderr por run)
+logs/**
+!logs/.gitkeep
+
+# Arquivos temporários e cache
+__pycache__/
+.pytest_cache/
+.coverage
+.coverage.*
+.coverage.*.*
+.coverage.*.*.*
+.coverage.*.*.*.*
+.coverage.*.*.*.*.*
+.coverage.*.*.*.*.*.*
+
+# Logs de execução (stdout/stderr por run)
