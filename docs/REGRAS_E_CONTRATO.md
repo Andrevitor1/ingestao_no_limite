@@ -24,6 +24,7 @@ As queries executadas pelo juiz estão em [`evaluator/judge/sql/gates/`](../eval
 | Schema | `public` |
 | Tabela | `{participante}_empresas` |
 | Exemplo | participante `renan_python` → `public.renan_python_empresas` |
+| Hífen no ID | Permitido (ex.: `dataforma-hub`). Ao criar a tabela no SQL/client, use identificador entre aspas: `public."dataforma-hub_empresas"` — senão o Postgres interpreta `-` como minus. |
 
 A tabela deve existir e estar populada ao final da execução do container.
 

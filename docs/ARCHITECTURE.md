@@ -475,7 +475,7 @@ ingestao_no_limite/
 │   ├── GATES_E_RANKING.md
 │   └── CHECKLIST_PR.md
 ├── submissions/
-│   └── *.json                 # Metadados da submissão (participante + repo)
+│   └── *.json                 # Metadados (participante + repo + email opcional)
 ├── submitter/                 # Starter — copiar para o repo do participante
 │   ├── Dockerfile
 │   ├── requirements.txt

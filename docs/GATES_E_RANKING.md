@@ -16,6 +16,7 @@ Merge na main (submissions/*.json)
   → docker run com timeout ~3h20m (Gate G2 — bash)
   → evaluator/judge/validar.py avaliar (Gates G2–G4 + métricas)
   → Gravação em ranking_ingestao + recalcular_posicoes_ranking()
+  → E-mail ao participante (campo `email` no JSON) com indicadores
   → Site de ranking + logs do workflow
 ```
 
@@ -37,7 +38,7 @@ Gates são **binários**. Falhou um = submissão **não classificada** (sem posi
 
 | Check | Condição | Status em caso de falha |
 | :--- | :--- | :--- |
-| JSON válido | Campos `participante` e `repositorio` presentes | `ERRO_JSON_INVALIDO` |
+| JSON válido | Campos `participante` e `repositorio` presentes (`email` opcional para relatório) | `ERRO_JSON_INVALIDO` |
 | Repositório clonável | `git clone` com sucesso | `ERRO_CLONE_GIT` |
 | Dockerfile presente | Arquivo na raiz do repo | `DOCKERFILE_AUSENTE` |
 | Build Docker | `docker build` com sucesso em ≤ 15 min | `ERRO_BUILD_DOCKER` / `ERRO_BUILD_TIMEOUT` |
@@ -186,7 +187,7 @@ Consultas prontas para rodar no servidor: `evaluator/judge/sql/site/consultas_ra
 | Reavaliação | Novo merge do JSON ou `workflow_dispatch` manual — execuções enfileiradas, não canceladas |
 | Timeout global | ~3h20m no `docker run` (~48M linhas a processar) |
 | Build global | 15 minutos no `docker build` (1 CPU / 1 GB — não compete com o pipeline) |
-| Feedback | Logs do workflow + site de ranking (`v_ultima_avaliacao`) |
+| Feedback | Logs do workflow + e-mail do participante (campo `email` no JSON) + site de ranking (`v_ultima_avaliacao`) |
 | Melhor resultado | Cada execução gera um registro; o site usa a melhor classificada |
 
 ---

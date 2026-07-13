@@ -38,7 +38,7 @@ Antes de abrir o Pull Request e fazer **merge** na `main` (o que dispara a avali
 ## Submissão
 
 - [ ] Arquivo `submissions/seu_usuario.json` criado no fork.
-- [ ] JSON contém `participante` e `repositorio` (URL pública do seu código).
+- [ ] JSON contém `participante`, `repositorio` (URL pública do seu código) e `email` (para receber o relatório da avaliação).
 - [ ] Repositório da solução é público e contém o `Dockerfile` na raiz.
 
 ## Antes de abrir o PR

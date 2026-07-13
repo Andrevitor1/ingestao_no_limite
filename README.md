@@ -144,10 +144,12 @@ O `participante.json` na raiz do **seu** repo é para organização e deve bater
 ```json
 {
   "participante": "seu_usuario",
-  "repositorio": "https://github.com/seu_usuario/seu-repo-da-solucao"
+  "repositorio": "https://github.com/seu_usuario/seu-repo-da-solucao",
+  "email": "seu_email@exemplo.com"
 }
 ```
 
+O campo `email` é opcional, mas recomendado: após a avaliação o workflow envia um relatório com status, tempo, storage, pico de RAM e posição no ranking.
 1. Abra um Pull Request contra a `main` do repo oficial e **faça merge**. Após o merge, o workflow clona o `repositorio` acima e roda o `Dockerfile` **de lá**.
 
 ---

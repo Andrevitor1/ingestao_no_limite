@@ -83,6 +83,49 @@ jobs:
           chmod +x evaluator/evaluator.sh
           ./evaluator/evaluator.sh "$CHANGED_FILE"
 
+      - name: Enviar relatório por e-mail
+        if: always()
+        continue-on-error: true
+        run: |
+          set -eo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            CHANGED_FILE="${{ github.event.inputs.submission }}"
+          else
+            CHANGED_FILE="${{ steps.changed-files.outputs.all_changed_files }}"
+            CHANGED_FILE=$(echo "$CHANGED_FILE" | awk '{print $1}')
+          fi
+
+          if [ -z "$CHANGED_FILE" ] || [ ! -f "$CHANGED_FILE" ]; then
+            echo "Sem arquivo de submissão — pulando envio de e-mail."
+            exit 0
+          fi
+
+          PARTICIPANTE=$(jq -r '.participante // empty' "$CHANGED_FILE")
+          TO_EMAIL=$(jq -r '.email // empty' "$CHANGED_FILE")
+
+          if [ -z "$TO_EMAIL" ] || [ "$TO_EMAIL" = "null" ]; then
+            echo "Campo 'email' ausente no JSON — pulando envio de e-mail."
+            exit 0
+          fi
+
+          if [ -z "$PARTICIPANTE" ]; then
+            echo "Campo 'participante' ausente — pulando envio de e-mail."
+            exit 0
+          fi
+
+          # shellcheck disable=SC1091
+          source evaluator/scripts/lib/ensure-judge-venv.sh
+          resolve_judge_python
+
+          echo "================================================="
+          echo "--> Enviando relatório para: $TO_EMAIL ($PARTICIPANTE)"
+          echo "================================================="
+
+          "$JUDGE_PYTHON" evaluator/judge/send_report.py \
+            --participante "$PARTICIPANTE" \
+            --to "$TO_EMAIL"
+
       - name: Intervalo de cortesia (fairness)
         if: always()
         run: |

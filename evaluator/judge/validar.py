@@ -129,16 +129,23 @@ def validate_participante(participante: str) -> str:
     return participante
 
 
+def quote_ident(name: str) -> str:
+    """Identificador PostgreSQL entre aspas (necessário com hífen, ex.: dataforma-hub)."""
+    return '"' + name.replace('"', '""') + '"'
+
+
 def table_name(participante: str) -> str:
     return f"{validate_participante(participante)}_empresas"
 
 
 def table_fqn(participante: str) -> str:
-    return f"public.{table_name(participante)}"
+    # public."dataforma-hub_empresas" — sem aspas o "-" vira operador minus
+    return f"public.{quote_ident(table_name(participante))}"
 
 
 def table_regclass(participante: str) -> str:
-    return f"'{table_fqn(participante)}'"
+    # Literal para to_regclass() / ::regclass, ex.: 'public."dataforma-hub_empresas"'
+    return f"'public.{quote_ident(table_name(participante))}'"
 
 
 def connect(db: str, cfg: Config):
