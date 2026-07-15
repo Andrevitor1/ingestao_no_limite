@@ -104,6 +104,109 @@ def _fmt(value: Any, suffix: str = "") -> str:
     return f"{value}{suffix}"
 
 
+def _feedback_section(
+    status: str,
+    *,
+    classificado: bool,
+    total_registros: Any,
+) -> list[str]:
+    """Bloco amigável explicando o resultado e o próximo passo."""
+    if classificado:
+        return [
+            "=== O que isso significa ===",
+            "Parabéns — sua submissão passou em todos os gates e está classificada",
+            "no ranking. Os indicadores acima entram no cálculo do score composto",
+            "(tempo, pico de RAM e storage).",
+            "",
+            "Você pode reenviar se quiser melhorar o score; a última avaliação",
+            "válida substitui a anterior no ranking.",
+            "",
+        ]
+
+    hints: dict[str, list[str]] = {
+        "ERRO_EXECUCAO": [
+            "O container do pipeline iniciou, mas encerrou com exit code ≠ 0.",
+            "Nenhum (ou poucos) dados foram carregados com sucesso — por isso",
+            "Volume e Data Quality ficam como 'não'.",
+            "",
+            "Como diagnosticar:",
+            "  1. Abra o log da GitHub Action desta avaliação e procure o",
+            "     Traceback / mensagem de erro perto do fim da execução.",
+            "  2. Corrija a falha no seu código (transform/load) e reenvie.",
+            "",
+            "Dica comum em Python: se você monta SQL com str.format() / f-string",
+            "e a query contém chaves { }, o Python trata isso como placeholder.",
+            "Ex.: IndexError: Replacement index N out of range — escape chaves",
+            "literais com {{ e }}, ou injete o timestamp de outro jeito.",
+        ],
+        "ERRO_TIMEOUT": [
+            "A execução ultrapassou o tempo máximo permitido e foi interrompida.",
+            "Otimize leitura/transformação/carga (streaming, menos cópias em",
+            "memória, carga em lote) e reenvie.",
+        ],
+        "ERRO_OOM": [
+            "O container foi morto por excesso de memória (exit 137 / OOM).",
+            "Evite carregar os arquivos inteiros na RAM; processe em streaming",
+            "ou em lotes menores e reenvie.",
+        ],
+        "ERRO_TABELA_AUSENTE": [
+            "A execução terminou, mas a tabela final esperada não foi encontrada.",
+            "Confira o nome (public.\"<participante>_empresas\", com aspas se o ID",
+            "tiver hífen) e se o load realmente grava no Postgres.",
+        ],
+        "ERRO_TABELA_VAZIA": [
+            "A tabela existe, mas ficou com 0 registros. Verifique filtros,",
+            "parsing dos .EMPRECSV e se o INSERT/COPY realmente grava as linhas.",
+        ],
+        "ERRO_POUCOS_REGISTROS": [
+            "A tabela tem menos registros do que a faixa de Volume aceita.",
+            f"Total atual: {_fmt(total_registros)}. Revise filtros e parsing",
+            "(linhas com ; dentro de aspas, encoding Latin-1, etc.).",
+        ],
+        "ERRO_REGISTROS_DEMAIS": [
+            "A tabela tem mais registros do que a faixa de Volume aceita.",
+            f"Total atual: {_fmt(total_registros)}. Possíveis causas: carga dupla,",
+            "falta de deduplicação, ou ausência do filtro/regra de negócio.",
+        ],
+        "ERRO_DATA_QUALITY": [
+            "O Volume passou, mas um ou mais gates de Data Quality falharam.",
+            "Veja 'DQ detalhes' abaixo (contagem de linhas fora da regra) e",
+            "corrija as transformações indicadas na documentação do desafio.",
+        ],
+        "ERRO_PREFLIGHT": [
+            "A avaliação falhou antes de rodar o pipeline (preflight).",
+            "Isso costuma ser infra do avaliador — se persistir, avise a organização.",
+        ],
+        "ERRO_PREFLIGHT_PG": [
+            "A avaliação falhou no preflight do PostgreSQL.",
+            "Isso costuma ser infra do avaliador — se persistir, avise a organização.",
+        ],
+        "ERRO_JSON_INVALIDO": [
+            "O JSON de submissão está inválido ou incompleto.",
+            "Confira os campos obrigatórios: participante e repositorio",
+            "(email é opcional, mas recomendado para receber este relatório).",
+        ],
+    }
+
+    body = hints.get(
+        status,
+        [
+            "A submissão não foi classificada com o status acima.",
+            "Consulte o log da GitHub Action e a documentação do desafio",
+            "(gates, schema e faixa de volume) para ajustar e reenviar.",
+        ],
+    )
+
+    return [
+        "=== O que isso significa ===",
+        *body,
+        "",
+        "Próximo passo: corrija, faça commit e reenvie a submissão. A nova",
+        "avaliação substitui a anterior.",
+        "",
+    ]
+
+
 def build_message(row: dict[str, Any], to_email: str) -> EmailMessage:
     participante = row["github_user"]
     status = row["status"]
@@ -122,17 +225,34 @@ def build_message(row: dict[str, Any], to_email: str) -> EmailMessage:
             pass
     dq_txt = json.dumps(dq, ensure_ascii=False, indent=2) if dq else "—"
 
-    lines = [
+    intro = [
         f"Olá, {participante}!",
         "",
         "Segue o resultado da sua avaliação automática no desafio Ingestão no Limite.",
         "",
+    ]
+    if not classificado:
+        intro.extend(
+            [
+                "Sua submissão ainda não foi classificada. Abaixo estão o status,",
+                "os indicadores e uma orientação objetiva do que revisar.",
+                "",
+            ]
+        )
+
+    lines = [
+        *intro,
         "=== Resultado ===",
         f"Status          : {status}",
         f"Classificado    : {_fmt(classificado)}",
         f"Posição ranking : {_fmt(row.get('posicao_ranking'))}",
         f"Avaliado em     : {_fmt(row.get('criado_em'))}",
         "",
+        *_feedback_section(
+            status,
+            classificado=classificado,
+            total_registros=row.get("total_registros"),
+        ),
         "=== Indicadores principais ===",
         f"Tempo (s)           : {_fmt(row.get('tempo_segundos'))}",
         f"Storage Postgres MB : {_fmt(row.get('storage_postgres_mb'))}",
@@ -154,6 +274,7 @@ def build_message(row: dict[str, Any], to_email: str) -> EmailMessage:
         f"PR número   : {_fmt(row.get('pr_numero'))}",
         "",
         "Este e-mail foi enviado automaticamente pelo avaliador.",
+        "Em caso de dúvida, responda a este e-mail ou consulte o log da Action.",
     ]
 
     msg = EmailMessage()
