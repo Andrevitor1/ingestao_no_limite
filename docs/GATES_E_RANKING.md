@@ -66,24 +66,24 @@ Comando: `python3 evaluator/judge/validar.py preflight --participante <user>`
 
 ### Gate G3 — Sanidade de volume
 
-Os filtros são determinísticos: a resposta correta é **exatamente 25.031.418** registros. A faixa aceita é **estreita** (`VOLUME_MIN`/`VOLUME_MAX` = 24,9M / 25,15M, ±~0,5%).
+A carga é **completa**: a resposta correta grava **todas** as ~68,6M linhas da origem. A faixa aceita é **estreita** (`VOLUME_MIN`/`VOLUME_MAX` = 68,56M / 68,70M) — confirme o total exato com um run do profiler antes de abrir a rodada.
 
 | Condição | Status |
 | :--- | :--- |
 | `total = 0` | `ERRO_TABELA_VAZIA` |
-| `total < 24.900.000` | `ERRO_POUCOS_REGISTROS` |
-| `total > 25.150.000` | `ERRO_REGISTROS_DEMAIS` |
-| `24,9M ≤ total ≤ 25,15M` | aprovado |
+| `total < 68.560.000` | `ERRO_POUCOS_REGISTROS` |
+| `total > 68.700.000` | `ERRO_REGISTROS_DEMAIS` |
+| `68,56M ≤ total ≤ 68,70M` | aprovado |
 
 Script manual: `evaluator/judge/sql/metrics/volume_sanity.sql`
 
 ### Gate G4 — Data Quality
 
-**Dez regras** de qualidade (DQ-01 a DQ-10). Cada uma conta registros inválidos — **todas devem retornar 0**. Foram endurecidas nesta rodada: DQ-03 (numérico), DQ-07 (consistência linha a linha `porte_codigo`↔`porte_descricao`), e as novas DQ-09 (`cnpj_basico` único) e DQ-10 (encoding correto / razão não vazia).
+**Treze regras** de qualidade (DQ-01 a DQ-13). Cada uma conta registros inválidos — **todas devem retornar 0**. Nesta rodada de carga completa, DQ-05 e DQ-08 **mudaram de sentido** (agora validam consistência das flags `capital_social_faixa` e `is_mei`, não mais filtro), DQ-10 foi **relaxado** (razão NOT NULL + encoding, mas permite vazio `''`), e há **três novas**: DQ-11 (`natureza_juridica_grupo`), DQ-12 (`ente_federativo_presente`) e DQ-13 (`data_processamento`). Continuam: DQ-03 (numérico), DQ-07 (consistência linha a linha) e DQ-09 (`cnpj_basico` único).
 
 | Resultado | Status |
 | :--- | :--- |
-| Todas as 10 regras = 0 erros | `CLASSIFICADO` |
+| Todas as 13 regras = 0 erros | `CLASSIFICADO` |
 | Qualquer regra > 0 | `ERRO_DATA_QUALITY` |
 
 Detalhes de qual gate falhou ficam em `gate_dq_detalhes` (JSON).  
@@ -113,6 +113,8 @@ score = 1000 × ( 0.60 × (tempo_segundos / 3600)          -- tempo (orçamento 
 | `storage_total_mb` | **0.15** | 4096 MB | Postgres + S3; recompensa tipos compactos e sem bloat |
 
 > Exemplo real (validado): uma solução de **1500 s / 900 MB / 3000 MB** (score ~580) **perde** para uma de **1800 s / 400 MB / 2000 MB** (score ~471) — mesmo sendo 5 min mais rápida. É o incentivo à engenharia.
+
+> **Storage pesa mais nesta rodada.** A carga completa (~68,6M linhas) + 6 colunas derivadas gera uma tabela **muito maior** que a da rodada anterior (~25M / 8 colunas), então o termo de storage (referência 4 GB) cresce e pode passar de `1,0`. Combata o bloat: use `BOOLEAN` para as flags (`is_mei`, `ente_federativo_presente`), `VARCHAR` curto para os rótulos derivados, evite índices desnecessários e rode `VACUUM`/`ANALYZE` ao final. A referência de 4 GB (`SCORE_REF_STORAGE_MB`) foi mantida para preservar o incentivo — não é um teto.
 
 ### Métricas coletadas
 

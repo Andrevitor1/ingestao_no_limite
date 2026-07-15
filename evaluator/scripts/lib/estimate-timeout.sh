@@ -15,17 +15,17 @@
 # Perfil real (medido por evaluator/scripts/profile_empresas.py):
 #   10 zips, ~1,26 GB comprimidos → ~5,0 GB descompactados (4,0x)
 #   Empresas0: 28.175.408 linhas (~2,1 GB) + 9 arquivos de 4.494.860 linhas
-#   total: 68.629.148 linhas, 7 colunas de origem + 3 derivadas
-#   após filtros B2B: ~25.031.418 registros na tabela final
+#   total: 68.629.148 linhas, 7 colunas de origem + 6 derivadas
+#   carga completa (sem filtro): ~68.629.148 registros na tabela final
 : "${DATA_ZIP_COUNT:=10}"
 : "${DATA_COMPRESSED_MB:=1290}"
 : "${DATA_LINES_FILE1:=28175408}"
 : "${DATA_LINES_OTHERS_EACH:=4494860}"
 : "${DATA_FILES_OTHERS:=9}"
 : "${DATA_SOURCE_COLUMNS:=7}"
-: "${DATA_DERIVED_COLUMNS:=3}"
+: "${DATA_DERIVED_COLUMNS:=6}"
 : "${DATA_UNCOMPRESSED_MB:=5112}"
-: "${DATA_FINAL_ROWS_EST:=25031418}"
+: "${DATA_FINAL_ROWS_EST:=68629148}"
 
 # Orçamento fixo e limites de hardware (restritivos por design).
 : "${PIPELINE_TIMEOUT_SEC:=3600}"     # 60 min — hard cap
@@ -104,7 +104,7 @@ Perfil do dataset e orçamento do pipeline:
   zips: ${DATA_ZIP_COUNT} (~${DATA_COMPRESSED_MB} MB comprimidos, ~${DATA_UNCOMPRESSED_MB} MB descompactados)
   linhas: arquivo 1 ~$(format_number "$DATA_LINES_FILE1") + ${DATA_FILES_OTHERS}×$(format_number "$DATA_LINES_OTHERS_EACH") = ~${lines_label} a processar
   colunas: ${DATA_SOURCE_COLUMNS} origem + ${DATA_DERIVED_COLUMNS} derivadas (regras de negócio)
-  tabela final estimada (pós-filtros B2B): ~${final_label} registros
+  tabela final (carga completa, sem filtro): ~${final_label} registros
   hardware: ${PIPELINE_CPU_LIMIT} CPU / ${PIPELINE_MEM_LIMIT} RAM (sem swap)
   orçamento (hard cap): ${human}
   throughput EXIGIDO: ~${rps_label} linhas/s sustentado (ler+transformar+filtrar+gravar)

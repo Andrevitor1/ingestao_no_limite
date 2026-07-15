@@ -101,7 +101,7 @@ check_repo_layout() {
 check_sql_layout() {
     local sql_base="${JUIZ_SQL_DIR:-$JUDGE_DIR/sql}"
     local missing=0
-    for f in gates/dq-01_cnpj_basico.sql gates/dq-08_mei_cpf.sql \
+    for f in gates/dq-01_cnpj_basico.sql gates/dq-08_is_mei.sql \
              metrics/table_exists.sql metrics/row_count.sql \
              schema/ranking_ingestao.sql dev/seed_participante.sql; do
         [[ -f "$sql_base/$f" ]] || { log "   ausente: $sql_base/$f"; missing=1; }

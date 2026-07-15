@@ -6,7 +6,7 @@ Documentos relacionados:
 
 | Documento | Conteúdo |
 | :--- | :--- |
-| [REGRAS_E_CONTRATO.md](./REGRAS_E_CONTRATO.md) | Schema, filtros B2B, data quality |
+| [REGRAS_E_CONTRATO.md](./REGRAS_E_CONTRATO.md) | Schema (13 colunas), carga completa, data quality (13 gates) |
 | [STACK_E_LIMITES.md](./STACK_E_LIMITES.md) | Variáveis de ambiente, limites de hardware |
 | [GATES_E_RANKING.md](./GATES_E_RANKING.md) | Gates, status, critérios de ranking |
 | [CHECKLIST_PR.md](./CHECKLIST_PR.md) | Checklist para participantes |
@@ -241,7 +241,7 @@ sequenceDiagram
 
     AV->>AV: Mede pico RAM, limpa container/imagem
     AV->>JZ: avaliar --tempo --exit-code --peak-ram-mb
-    JZ->>PG: Gate execução, volume, DQ-01..10
+    JZ->>PG: Gate execução, volume, DQ-01..13
     JZ->>MN: Métrica storage S3 (prefixo participante)
     JZ->>PG: INSERT ranking_ingestao
     JZ-->>AV: CLASSIFICADO ou ERRO_*
@@ -303,7 +303,7 @@ flowchart TD
     G2D -->|sim| G3
 
     subgraph G3["Gate G3 — Volume"]
-        G3A{Registros na faixa<br/>24,9M – 25,15M?}
+        G3A{Registros na faixa<br/>68,56M – 68,70M?}
     end
 
     G3A -->|0| E10[ERRO_TABELA_VAZIA]
@@ -312,7 +312,7 @@ flowchart TD
     G3A -->|ok| G4
 
     subgraph G4["Gate G4 — Data Quality"]
-        G4A{DQ-01..10 = 0 erros?}
+        G4A{DQ-01..13 = 0 erros?}
     end
 
     G4A -->|não| E13[ERRO_DATA_QUALITY]
@@ -340,7 +340,7 @@ flowchart LR
 
     subgraph Container
         READ["Leitura streaming<br/>ISO-8859-1 → UTF-8"]
-        TRANS["Transformação<br/>filtros B2B"]
+        TRANS["Transformação<br/>deriva 6 colunas (sem filtro)"]
         LOAD["Carga Postgres"]
     end
 
@@ -353,7 +353,7 @@ flowchart LR
     end
 
     subgraph Validacao
-        DQ["10 gates DQ"]
+        DQ["13 gates DQ"]
         VOL["Sanidade de volume"]
         MET["Métricas storage + tempo + RAM"]
     end
@@ -382,8 +382,8 @@ flowchart LR
 | Arquivo 1 (`Empresas0.zip`) — linhas | **28.175.408** (~2,1 GB) |
 | Arquivos 2–10 — linhas cada | **4.494.860** cada |
 | **Total de linhas a processar** | **68.629.148** |
-| Colunas origem + derivadas | **7 + 3** (regras de negócio) |
-| Registros finais (após filtros) | **25.031.418** (faixa apertada 24,9M – 25,15M) |
+| Colunas origem + derivadas | **7 + 6** (regras de negócio) |
+| Registros finais (carga completa, sem filtro) | **~68.629.148** (faixa apertada 68,56M – 68,70M) |
 
 ---
 

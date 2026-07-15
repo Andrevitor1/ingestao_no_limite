@@ -18,7 +18,7 @@ Criar o pipeline de ingestão e tratamento dos dados empresariais **mais eficien
 
 Ao final, seu trabalho deve gerar uma **tabela padronizada e pronta para BI** no PostgreSQL. Você decide a arquitetura: pode usar **object storage compatível com S3** como apoio (staging, Parquet, Delta Lake, Iceberg) ou ir direto ao Postgres — o que importa é **passar nos gates** e **vencer no ranking**.
 
-Ao longo do processo, você deverá manipular múltiplos arquivos `.zip`, converter encodings e tipos de dados, além de aplicar regras rigorosas de qualidade de dados e filtros de negócio B2B — por exemplo, garantir `capital_social > 1000.00` e remover MEIs cujo nome termina com um CPF na razão social.
+Ao longo do processo, você deverá manipular múltiplos arquivos `.zip`, converter encodings e tipos de dados, aplicar regras rigorosas de qualidade de dados e **carregar todas as linhas** da origem (sem filtro), derivando **colunas de negócio** que segmentam a base para o BI — por exemplo, faixa de `capital_social`, flag `is_mei`, grupo de natureza jurídica e presença de ente federativo. É uma abordagem **ELT**: carregue o dado bruto e classifique-o em colunas, em vez de descartar registros.
 
 Todos os critérios serão verificados automaticamente. Apenas soluções que passem em **todos os gates** serão consideradas para o ranking.
 
@@ -71,7 +71,7 @@ Onde `{participante}` é exatamente o valor do campo `participante` no seu JSON 
 
 Para não travar no contrato de dados ou ser desclassificado por estouro de memória, leia os guias abaixo antes de codar:
 
-- 📄 **[Regras de Negócio e Contrato de Dados](./docs/REGRAS_E_CONTRATO.md)** — Schema, filtros B2B, tipos de dados e encoding.
+- 📄 **[Regras de Negócio e Contrato de Dados](./docs/REGRAS_E_CONTRATO.md)** — Schema (13 colunas), carga completa, tipos de dados e encoding.
 - 🏛️ **[Arquitetura do Projeto e Workflow](./docs/ARCHITECTURE.md)** — Componentes, fluxos, gates e diagramas.
 - 💻 **[Stack do Servidor, Variáveis e Acesso na Avaliação](./docs/STACK_E_LIMITES.md)** — Como a avaliação conecta ao Postgres/S3, env vars, licença do MinIO e limites de hardware.
 - 🚦 **[Gates, Ranking e Juiz Automático](./docs/GATES_E_RANKING.md)** — Gates de aprovação, métricas, timeout, fila e SQL de validação.
@@ -192,7 +192,7 @@ Para manter a competição divertida e o servidor saudável:
 | -------------------------- | ----------------------------------------------- |
 | RAM máxima do container    | **1 GB** (sem swap)                             |
 | CPUs máximas               | 2                                               |
-| Timeout do pipeline        | **60 min** (hard cap; ~68,6M linhas, 7+3 colunas → ~19k linhas/s) |
+| Timeout do pipeline        | **60 min** (hard cap; ~68,6M linhas, 7+6 colunas → ~19k linhas/s) |
 | Build da imagem            | **15 minutos** (separado; não conta no ranking) |
 | Avaliações simultâneas     | 1 (fila única — nunca em paralelo)              |
 | Intervalo entre avaliações | **15 minutos** de cooldown (fairness)           |

@@ -215,23 +215,23 @@ Números **reais**, medidos por `evaluator/scripts/profile_empresas.py`. Perfil 
 | **Arquivos 2–10** — linhas cada | **4.494.860** cada (~40,5M linhas no total) |
 | **Total de linhas a processar** | **68.629.148** |
 | Colunas no CSV de origem | **7** |
-| Colunas derivadas (regras de negócio) | **+3** (`porte_descricao`, filtros, etc.) |
-| Registros finais esperados | **25.031.418** (após filtros B2B — faixa apertada `VOLUME_MIN`/`VOLUME_MAX` = 24,9M / 25,15M) |
+| Colunas derivadas (regras de negócio) | **+6** (`porte_descricao`, `capital_social_faixa`, `is_mei`, `natureza_juridica_grupo`, `ente_federativo_presente`, `data_processamento`) |
+| Registros finais esperados | **~68.629.148** (carga completa, sem filtro — faixa apertada `VOLUME_MIN`/`VOLUME_MAX` = 68,56M / 68,70M) |
 
-> O orçamento de tempo incide sobre as **68,6M linhas lidas e transformadas**, não só sobre os ~25M da tabela final. Ler ≠ gravar: você lê 68,6M e grava ~25M.
+> Carga completa: você **lê e grava** todas as ~68,6M linhas. O orçamento de tempo incide sobre ler, transformar (derivar 6 colunas) e gravar o volume inteiro — sem o alívio de descartar linhas no filtro.
 
 ---
 
 ## ⏱️ Orçamento de tempo e o cálculo de engenharia
 
-O timeout **não é dimensionado com folga**. É um **orçamento fixo de 60 min** (hard cap). O gargalo real não é o tamanho em GB — é **quantas linhas o pipeline precisa ler, transformar (7→10 colunas) e filtrar** dentro de 1 GB de RAM antes de gravar no Postgres.
+O timeout **não é dimensionado com folga**. É um **orçamento fixo de 60 min** (hard cap). O gargalo real não é o tamanho em GB — é **quantas linhas o pipeline precisa ler, transformar (7→13 colunas) e gravar** dentro de 1 GB de RAM. Sem filtro, você grava **todas** as linhas: não há alívio de descarte na carga.
 
 ### O cálculo que você precisa fazer antes de submeter
 
 ```
 throughput_exigido = total_linhas / orçamento
                    = 68.629.148 / 3600 s
-                   ≈ 19.000 linhas/s sustentadas (ler + transformar + filtrar + gravar)
+                   ≈ 19.000 linhas/s sustentadas (ler + transformar + gravar TODAS)
 ```
 
 Se o seu design não sustenta **~19.000 linhas/s de ponta a ponta** em 2 CPU / 1 GB RAM, ele **não termina no prazo** — e é reprovado por `ERRO_TIMEOUT`. Esse é o incentivo: medir antes, não depois.
@@ -265,9 +265,9 @@ Quanto mais apertado o orçamento, maior o throughput mínimo. É o número que 
 | :--- | :--- |
 | Leitura dos 10 `.zip` em streaming | I/O + descompressão (4,0x) |
 | Parse CSV (`;`, ISO-8859-1, aspas com `;` embutido) | CPU por linha |
-| Derivação das 3 colunas de negócio | CPU por linha |
-| Filtros (`capital_social > 1000`, MEI/CPF) | CPU — descarta ~63% das 68,6M linhas |
-| Carga no Postgres (`COPY`/batch) | I/O de rede Docker + disco (~25M linhas) |
+| Derivação das 6 colunas de negócio (faixa, flags, grupo, carimbo) | CPU por linha |
+| Classificação/sinalização (faixa de capital, `is_mei`, grupo, ente) | CPU por linha — sem descarte |
+| Carga no Postgres (`COPY`/batch) | I/O de rede Docker + disco (**todas** as ~68,6M linhas) |
 
 Para recalcular: `source evaluator/scripts/lib/estimate-timeout.sh && print_timeout_estimate`
 

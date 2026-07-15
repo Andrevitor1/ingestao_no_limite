@@ -7,8 +7,8 @@ Onde este arquivo deve estar:
 
 O que o avaliador espera ao rodar o container:
   1. Ler os .zip em /data/ (montados pelo servidor, somente leitura)
-  2. Aplicar regras de negócio e qualidade (docs/REGRAS_E_CONTRATO.md)
-  3. Gravar a tabela final em db_empresas.public.{participante}_empresas
+  2. Aplicar regras de negócio e qualidade — carga completa, SEM filtro (docs/REGRAS_E_CONTRATO.md)
+  3. Gravar a tabela final (todas as linhas) em db_empresas.public.{participante}_empresas
 
 Variáveis de ambiente (NÃO hardcode host/senha — leia do ambiente):
   - PARTICIPANTE, PG_TABLE, PG_HOST, PG_PORT, PG_USER, PG_PASSWORD, PG_DB
@@ -18,8 +18,9 @@ Próximos passos para você implementar:
   - [ ] Listar e abrir os arquivos .zip em /data/
   - [ ] Ler os CSV internos (.EMPRECSV): separador ';', encoding ISO-8859-1, sem cabeçalho
   - [ ] Transformar colunas conforme o contrato (uppercase, capital_social, porte_descricao, etc.)
-  - [ ] Aplicar filtros B2B (capital_social > 1000; remover MEI com CPF no fim da razão social)
-  - [ ] Criar/popular public.{PG_TABLE} no Postgres
+  - [ ] Derivar as 6 colunas de negócio: capital_social_faixa, is_mei, natureza_juridica_grupo,
+        ente_federativo_presente, data_processamento (carga completa — NÃO filtre linhas)
+  - [ ] Criar/popular public.{PG_TABLE} no Postgres com TODAS as linhas
   - [ ] (Opcional) usar S3 apenas em s3://marketing-leads/{PARTICIPANTE}/
 
 Referências (no repo oficial da competição):
@@ -70,9 +71,9 @@ for path in zip_files:
 #   for zip_path in zip_files:
 #       with zipfile.ZipFile(zip_path) as zf:
 #           ...
-#       # transformar → filtrar → gravar em lotes no Postgres
+#       # transformar → derivar colunas → gravar TODAS em lotes no Postgres
 #
-# Dica: processe em streaming/lotes para respeitar o limite de 2 GB de RAM.
+# Dica: processe em streaming/lotes para respeitar o limite de 1 GB de RAM.
 
 print()
 print("TODO: implementar leitura, transformação e carga no Postgres.")

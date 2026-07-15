@@ -14,15 +14,19 @@ Antes de abrir o Pull Request e fazer **merge** na `main` (o que dispara a avali
 
 - [ ] A tabela final existe em `db_empresas.public.{participante}_empresas`.
 - [ ] O nome da tabela usa exatamente o campo `participante` do JSON + sufixo `_empresas`.
+- [ ] **Carga completa:** todas as ~68,6M linhas foram carregadas — **nenhum filtro** de capital ou MEI.
 - [ ] Encoding convertido de `ISO-8859-1` para `UTF-8` (sem `�`/U+FFFD nem lixo — **DQ-10**).
 - [ ] `capital_social` com vírgula BR convertida para ponto decimal.
-- [ ] Filtro `capital_social > 1000.00` aplicado.
-- [ ] Registros com CPF no final da `razao_social` removidos.
+- [ ] `capital_social_faixa` derivada e **exatamente** consistente com `capital_social` (**DQ-05**).
+- [ ] `is_mei = true` quando `razao_social` termina em 11 dígitos (flag, **não** remoção — **DQ-08**).
+- [ ] `natureza_juridica_grupo` derivada do 1º dígito de `natureza_juridica` (**DQ-11**).
+- [ ] `ente_federativo_presente` reflete `ente_federativo` preenchido (**DQ-12**).
+- [ ] `data_processamento` preenchido em toda linha (**DQ-13**).
 - [ ] `cnpj_basico` **único** na tabela final (sem carga dupla — **DQ-09**).
 - [ ] `porte_descricao` **exatamente** consistente com `porte_codigo` linha a linha (**DQ-07**).
-- [ ] `razao_social` não vazia; `natureza_juridica` com 4 dígitos numéricos (**DQ-03/DQ-10**).
-- [ ] Total final na faixa apertada **24,9M – 25,15M** (esperado exato: 25.031.418).
-- [ ] Schema e tipos conforme [REGRAS_E_CONTRATO.md](./REGRAS_E_CONTRATO.md) — **10 gates DQ** devem retornar 0.
+- [ ] `razao_social` **NOT NULL** (string vazia `''` é permitida — **não** use `NULL`); `natureza_juridica` com 4 dígitos numéricos (**DQ-03/DQ-10**).
+- [ ] Total final na faixa apertada **68,56M – 68,70M** (esperado: todas as linhas, ~68.629.148).
+- [ ] Schema e tipos conforme [REGRAS_E_CONTRATO.md](./REGRAS_E_CONTRATO.md) — **13 gates DQ** devem retornar 0.
 
 ## Infraestrutura e variáveis de ambiente
 

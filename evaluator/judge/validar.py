@@ -35,12 +35,15 @@ GATE_FILES = [
     ("DQ-02", "dq-02_razao_social.sql"),
     ("DQ-03", "dq-03_natureza_juridica.sql"),
     ("DQ-04", "dq-04_qualificacao_responsavel.sql"),
-    ("DQ-05", "dq-05_capital_social.sql"),
+    ("DQ-05", "dq-05_capital_faixa.sql"),
     ("DQ-06", "dq-06_porte_codigo.sql"),
     ("DQ-07", "dq-07_porte_descricao.sql"),
-    ("DQ-08", "dq-08_mei_cpf.sql"),
+    ("DQ-08", "dq-08_is_mei.sql"),
     ("DQ-09", "dq-09_cnpj_unico.sql"),
     ("DQ-10", "dq-10_encoding_razao.sql"),
+    ("DQ-11", "dq-11_natureza_grupo.sql"),
+    ("DQ-12", "dq-12_ente_presente.sql"),
+    ("DQ-13", "dq-13_data_processamento.sql"),
 ]
 
 
@@ -56,8 +59,8 @@ class Config:
     minio_access_key: str = "admin"
     minio_secret_key: str = "minio_password"
     minio_bucket: str = "marketing-leads"
-    volume_min: int = 24_900_000
-    volume_max: int = 25_150_000
+    volume_min: int = 68_560_000
+    volume_max: int = 68_700_000
     juiz_sql_dir: str = ""
 
 
@@ -119,8 +122,8 @@ def load_config() -> Config:
         minio_access_key=os.getenv("MINIO_ACCESS_KEY", "admin"),
         minio_secret_key=os.getenv("MINIO_SECRET_KEY", "minio_password"),
         minio_bucket=os.getenv("MINIO_BUCKET", "marketing-leads"),
-        volume_min=int(os.getenv("VOLUME_MIN", "24900000")),
-        volume_max=int(os.getenv("VOLUME_MAX", "25150000")),
+        volume_min=int(os.getenv("VOLUME_MIN", "68560000")),
+        volume_max=int(os.getenv("VOLUME_MAX", "68700000")),
         juiz_sql_dir=os.getenv("JUIZ_SQL_DIR", ""),
     )
 
