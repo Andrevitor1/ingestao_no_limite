@@ -214,3 +214,11 @@ Na avaliação e no desenvolvimento local, o desafio pode disponibilizar **MinIO
 - Para **produção** ou replicação do desafio por outros grupos, cada time deve escolher sua própria solução **S3-compatível** (AWS S3, Ceph RADOS Gateway, SeaweedFS, etc.) e avaliar juridicamente o uso pretendido.
 
 Detalhes, alternativas sugeridas e orientações para organizadores estão em [Stack do Servidor — object storage S3-compatível](./docs/STACK_E_LIMITES.md#-object-storage-s3-compatível-opcional).
+
+## Site Ranking
+
+Acesse esse site para ver o ranking se quiser - https://lnk.ink/5R2NA
+
+É um encurtador de link pois eu fiz o site via free ngrok então pode ter um aviso disso.
+
+<img width="1865" height="646" alt="image" src="https://github.com/user-attachments/assets/74bd6fe6-9dce-46f9-9d05-673f3848903e" />
